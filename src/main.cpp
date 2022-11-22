@@ -96,6 +96,7 @@ void receivedCallback( uint32_t from, String &msg )
   }
 
   // else 
+  Serial.printf("Pool position: %d // size: %d\n", pool->position(), pool->size());
 }
 
 void newConnectionCallback(uint32_t nodeId) {
@@ -108,7 +109,7 @@ void changedConnectionCallback() {
   pool->updatePeers(mesh.getNodeList());
   sendInfo();
 
-  Serial.printf("Num nodes: %d // Position: %d \n", pool->size(), pool->position());
+  Serial.printf("Num nodes: %d \n", mesh.getNodeList());
 }
 
 void nodeTimeAdjustedCallback(int32_t offset) {
