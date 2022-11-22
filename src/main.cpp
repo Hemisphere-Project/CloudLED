@@ -148,19 +148,21 @@ void setup()
   // WAIT END
   light->anim("test-strip")->wait();
 
-  // POOL
-  pool = new PeersPool(mesh.getNodeId(), k32->system->channel());
 
-  // PREPARE MESH
+
+  // START MESH
   // mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
   mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
+  mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler );
+
+  // POOL
+  pool = new PeersPool(mesh.getNodeId(), k32->system->channel());
+  
+  // SET MESH
   mesh.onReceive(&receivedCallback);
   mesh.onNewConnection(&newConnectionCallback);
   mesh.onChangedConnections(&changedConnectionCallback);
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
-
-  // START MESH
-  mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler );
 
   userScheduler.addTask( userLoopTask );
   userLoopTask.enable();
