@@ -69,7 +69,7 @@ void receivedCallback( uint32_t from, String &msg )
     PeersPool* remotePool = new PeersPool(msg.substring(3), from);
 
     // I am missing from the list => inform remote
-    if (remotePool->getChannel(mesh.getNodeId()) == -1) 
+    if (remotePool->getChannel(pool->ownerID()) != pool->ownerChannel()) 
     {
       Serial.println("Remote list doesnt know me => sending my channel");
       mesh.sendSingle(from, "C="+String(k32->system->channel()));
