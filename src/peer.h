@@ -53,12 +53,14 @@ class PeersPool  {
             peers[i].nodeId = 0;
             peers[i].channel = -1;
           }
+          _dirty = true;
         }
 
         void addPeer(uint32_t nodeId, int channel=-1) {
           for(int i=0; i<PEER_MAX; i++) {
             if (peers[i].nodeId == nodeId) {
               peers[i].channel = channel;
+              _dirty = true;
               return;
             }
           }
@@ -66,6 +68,7 @@ class PeersPool  {
             if (peers[i].nodeId == 0) {
               peers[i].nodeId = nodeId;
               peers[i].channel = channel;
+              _dirty = true;
               return;
             }
           }
@@ -76,6 +79,7 @@ class PeersPool  {
             if (peers[i].nodeId == nodeId) {
               peers[i].nodeId = 0;
               peers[i].channel = -1;
+              _dirty = true;
               return;
             }
           }
@@ -90,13 +94,6 @@ class PeersPool  {
           return -1;
         }
 
-        uint32_t* nodeList() {
-          uint32_t list[PEER_MAX];
-          for(int i=0; i<PEER_MAX; i++) {
-            list[i] = peers[i].nodeId;
-          }
-          return list;
-        }
 
         void updatePeers(std::list<uint32_t> nodes) 
         {
@@ -114,10 +111,7 @@ class PeersPool  {
                 }
                 node++;
               }
-              if (!found) {
-                peers[i].nodeId = 0;
-                peers[i].channel = -1;
-              }
+              if (!found) removePeer(peers[i].nodeId);
             }
           }
 
@@ -148,19 +142,53 @@ class PeersPool  {
           }
         }
 
-        int size() {
-          int count = 0;
-          for(int i=0; i<PEER_MAX; i++) {
-            if (peers[i].nodeId != 0 && peers[i].channel > -1) count++;
-          }
-          return count;
+        int size() 
+        {
+          calculate();
+          return _size;
         }
 
-        int position() {
-          int pos = 0;
+        int count() 
+        {
+          calculate();
+          return _distinctChannels;
+        }
+
+        int position() 
+        {
+          calculate();
+          return _position;
+        }
+
+        void calculate() 
+        {
+          if (!_dirty) return;
+
+          // Size
+          _size = 0;
           for(int i=0; i<PEER_MAX; i++)
-            if (peers[i].channel >= 0 && peers[i].channel < _channel) pos++;
-          return pos;
+            if (peers[i].nodeId != 0 && peers[i].channel > -1) _size++;
+        
+          // Distinct channels
+          int channels[32] = {0};
+          if (_channel > -1) channels[_channel] = 1;
+
+          for(int i=0; i<PEER_MAX; i++)
+            if (peers[i].nodeId != 0 && peers[i].channel > -1)
+              channels[peers[i].channel]++;
+
+          _distinctChannels = 0;
+          for(int i=0; i<32; i++)
+            if (channels[i] > 0) _distinctChannels++;
+
+          // Position
+          _position = 0;
+          for(int i=0; i<PEER_MAX; i++)
+            if (peers[i].channel >= 0) 
+              if (peers[i].channel < _channel) _position++;
+              else if (peers[i].channel == _channel && peers[i].nodeId < _nodeId) _position++;
+
+          _dirty = false;
         }
 
         bool isSolo() {
@@ -193,6 +221,12 @@ class PeersPool  {
       private:
         uint32_t _nodeId = 0;
         int _channel = -1;
+
+        int _size = 0;
+        int _position = 0;
+        int _distinctChannels = 0;
+
+        bool _dirty = true;
        
 };
 

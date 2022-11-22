@@ -32,6 +32,7 @@ Scheduler userScheduler; // to control your personal task
 // #define K32_SET_NODEID 4      // board unique id  
 ////
 
+int lastPhase = -1;
 
 
 // USER LOOP TASK 
@@ -103,13 +104,12 @@ void newConnectionCallback(uint32_t nodeId) {
     // Serial.printf("--> New Connection, nodeId = %u\n", nodeId);
 }
 
-void changedConnectionCallback() {
-  Serial.printf("Changed connections\n");
+void changedConnectionCallback() 
+{
+  Serial.printf("Changed connections, node count = %d \n", mesh.getNodeList().size());
 
   pool->updatePeers(mesh.getNodeList());
   sendInfo();
-
-  Serial.printf("Num nodes: %d \n", mesh.getNodeList().size());
 }
 
 void nodeTimeAdjustedCallback(int32_t offset) {
@@ -175,15 +175,30 @@ void loop()
 
   mesh.update();
 
-  int time = ( mesh.getNodeTime()/1000 ) % (1000*pool->size()+1) ;
+  int time = (mesh.getNodeTime()/1000) % (1000*pool->count()) ;
+  int phase = time / 1000;
 
-  if ( time >= 1000*pool->position() && time < 1000*(pool->position()+1) ) {
-    strip->all( CRGBW{255,255,255} );
-    // Serial.println("White");
-  } else {
-    strip->all( CRGBW{0,255,0} );
-    // Serial.println("Red");
+  if (phase != lastPhase) 
+  {
+    Serial.println("Phase: " + String(phase));
+    lastPhase = phase;
+
+    int channel = pool->getChannel(mesh.getNodeId());
+    Serial.println("My channel: " + String(channel));
+
+    if (channel == phase) 
+    {
+      Serial.println("My turn !");
+      strip->all( CRGBW{255,255,255} );
+    }
+    else 
+    {
+      Serial.println("Not my turn");
+      strip->all( CRGBW{0,255,0} );
+    }
   }
+
+
 
   // int speed = 300;
 
