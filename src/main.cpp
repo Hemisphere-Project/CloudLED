@@ -29,7 +29,7 @@ Scheduler userScheduler; // to control your personal task
 #define   MESH_PASSWORD   "somethingSneaky!"
 
 //// Disable once flashed (EEPROM stored)
-#define K32_SET_NODEID 4      // board unique id  
+// #define K32_SET_NODEID 4      // board unique id  
 ////
 
 
@@ -58,6 +58,8 @@ Task userLoopTask( TASK_MILLISECOND * 5000 , TASK_FOREVER, &sendInfo );
 // Needed for painless library
 void receivedCallback( uint32_t from, String &msg ) 
 {
+  Serial.printf("-- Received from %u msg=%s\n", from, msg.c_str());
+
   // Receive channels list from Remote
   if (msg.startsWith("CL=")) 
   {
@@ -94,7 +96,6 @@ void receivedCallback( uint32_t from, String &msg )
   }
 
   // else 
-  Serial.printf("Received from %u msg=%s\n", from, msg.c_str());
 }
 
 void newConnectionCallback(uint32_t nodeId) {

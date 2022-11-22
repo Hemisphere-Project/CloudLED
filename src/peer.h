@@ -191,8 +191,8 @@ class PeersPool  {
         Peer peers[PEER_MAX];
 
       private:
-        uint32_t _nodeId;
-        int _channel;
+        uint32_t _nodeId = 0;
+        int _channel = -1;
        
 };
 
