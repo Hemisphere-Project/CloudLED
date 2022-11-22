@@ -12,9 +12,12 @@ K32_light* light = nullptr;
 #include <fixtures/K32_ledstrip.h>
 K32_fixture* strip = NULL;
 
+#include "peer.h"
+PeersPool* pool;
+
 #include "painlessMesh.h"
 painlessMesh  mesh;
-SimpleList<uint32_t> nodes;
+SimpleList<uint32_t> activesNodes;
 
 Scheduler userScheduler; // to control your personal task
 
@@ -26,133 +29,85 @@ Scheduler userScheduler; // to control your personal task
 #define   MESH_PASSWORD   "somethingSneaky!"
 
 //// Disable once flashed (EEPROM stored)
-#define K32_SET_NODEID 3      // board unique id  
+#define K32_SET_NODEID 4      // board unique id  
 ////
 
-int position = 0;
-int peerCount = 1;
-uint32_t channels[16] = {0};
 
-// CALCULATE MY POSITION
-void calcPosition() {
 
-  channels[k32->system->channel()] = mesh.getNodeId(); // make sure i am myself
-
-  position = 0;
-  for (int i = 0; i < k32->system->channel(); i++) 
-    if (channels[i]) position++;
-
-  peerCount = 0;
-  for (int i = 0; i < 16; i++) 
-    if (channels[i]) peerCount++;
-
-  Serial.printf("Position: %d/%d\n", position, peerCount);
-}
-
-// USER LOOP TASK
-void userLoop() 
+// USER LOOP TASK 
+void sendInfo() 
 {
-  // Individual situation = send my channel
-  if (peerCount == 1) {
+  // I don't know others => send my channel
+  //
+  if (pool->isSolo()) 
+  {
     Serial.println("Solo... broadcast my channel !");
     mesh.sendBroadcast( "C="+String(k32->system->channel()) );
   }
 
-  // Master situation = send channel list
-  else if (position == 0) {
-    String msg = "CL=";
-    for (int i = 0; i < 16; i++) {
-      msg += String(channels[i]);
-      if (i < 15) msg += ",";
-    }
+  // Master situation => send channel list periodically
+  //
+  if (pool->isMaster()) 
+  {
     Serial.println("Master... broadcast channel list !");
-    mesh.sendBroadcast( msg );
+    mesh.sendBroadcast( "CL="+pool->toString() );
   }
-  
 }
-
-Task userLoopTask( TASK_MILLISECOND * 1000 , TASK_FOREVER, &userLoop );
+Task userLoopTask( TASK_MILLISECOND * 5000 , TASK_FOREVER, &sendInfo );
 
 // Needed for painless library
 void receivedCallback( uint32_t from, String &msg ) 
 {
-  // Receive channels list
+  // Receive channels list from Remote
   if (msg.startsWith("CL=")) 
   {
-    // Channels list from Master
-    uint32_t channelsMaster[16] = {0};
-    String channelsStr = msg.substring(2);
-    int i = 0;
-    int pos = 0;
-    while (i < channelsStr.length()) {
-      int next = channelsStr.indexOf(",", i);
-      if (next == -1) next = channelsStr.length();
-      channels[pos] = channelsStr.substring(i, next).toInt();
-      i = next + 1;
-      pos++;
-    }
+    // Parse remote pool list
+    PeersPool* remotePool = new PeersPool(msg.substring(3), from);
+
+    // I am missing from the list => inform remote
+    if (remotePool->getChannel(mesh.getNodeId()) == -1) 
+    {
+      Serial.println("Remote list doesnt know me => sending my channel");
+      mesh.sendSingle(from, "C="+String(k32->system->channel()));
     
-    // I'm not in the list... re-broadcast my channel !
-    if (channels[k32->system->channel()] == 0) {
-      Serial.println("I'm not in the list... re-broadcast my channel !");
-      mesh.sendBroadcast( "C="+String(k32->system->channel()) );
+      remotePool->addPeer(mesh.getNodeId(), k32->system->channel());
     }
-    
-    calcPosition();
+
+    // If remote is indeed master, update my pool
+    if (remotePool->isMaster()) {
+      Serial.println("Remote is master, update my pool");
+      pool->import(remotePool);
+    }
   }
 
   // Receive individual channel
-  if (msg.startsWith("C=")) {
-    channels[msg.substring(2).toInt()] = from;
-    calcPosition();
-    if (position > 0) mesh.sendSingle(from, "C="+String(k32->system->channel()) );
-  }
+  if (msg.startsWith("C=")) 
+  {
+    Serial.println("Received channel from remote");
+    int channel = msg.substring(2).toInt();
+    pool->addPeer(from, channel);
 
+    if (channel < k32->system->channel()) {
+      Serial.println("Remote channel is lower => He should know me so he takes the lead");
+      mesh.sendSingle(from, "C="+String(k32->system->channel()));
+    }
+  }
 
   // else 
   Serial.printf("Received from %u msg=%s\n", from, msg.c_str());
-
 }
 
 void newConnectionCallback(uint32_t nodeId) {
-    Serial.printf("--> New Connection, nodeId = %u\n", nodeId);
+    // Serial.printf("--> New Connection, nodeId = %u\n", nodeId);
 }
 
 void changedConnectionCallback() {
   Serial.printf("Changed connections\n");
 
-  nodes = mesh.getNodeList();
+  pool->updatePeers(mesh.getNodeList());
+  sendInfo();
 
-  SimpleList<uint32_t>::iterator node = nodes.begin();
-  
-  // remove channel if node is not connected anymore
-  for (int i = 0; i < 16; i++) {
-    if (channels[i]) {
-      // search for node
-      bool found = false;
-      while (node != nodes.end()) {
-        if (channels[i] == *node) {
-          found = true;
-          break;
-        }
-        node++;
-      }
-      if (!found) channels[i] = 0;
-    }
-  }
-  calcPosition();
-
-
-  Serial.printf("Num nodes: %d\n", nodes.size());
-  Serial.printf("Connection list:");
-
-  node = nodes.begin();
-  while (node != nodes.end()) {
-    Serial.printf(" %u", *node);
-    node++;
-  }
-  Serial.println();
-
+  Serial.printf("Num nodes: %d // Position: %d \n", pool->size(), pool->position());
 }
 
 void nodeTimeAdjustedCallback(int32_t offset) {
@@ -192,16 +147,19 @@ void setup()
   // WAIT END
   light->anim("test-strip")->wait();
 
-  // MESH
+  // POOL
+  pool = new PeersPool(mesh.getNodeId(), k32->system->channel());
+
+  // PREPARE MESH
   // mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
   mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
-  mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler );
   mesh.onReceive(&receivedCallback);
   mesh.onNewConnection(&newConnectionCallback);
   mesh.onChangedConnections(&changedConnectionCallback);
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
 
-  channels[k32->system->channel()] = mesh.getNodeId(); // my channel is active
+  // START MESH
+  mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler );
 
   userScheduler.addTask( userLoopTask );
   userLoopTask.enable();
@@ -213,12 +171,14 @@ void loop()
 
   mesh.update();
 
-  int time = ( mesh.getNodeTime()/1000 ) % (1000*peerCount) ;
+  int time = ( mesh.getNodeTime()/1000 ) % (1000*pool->size()+1) ;
 
-  if ( time > 1000*position && time < 1000*(position+1) ) {
+  if ( time >= 1000*pool->position() && time < 1000*(pool->position()+1) ) {
     strip->all( CRGBW{255,255,255} );
+    // Serial.println("White");
   } else {
     strip->all( CRGBW{0,255,0} );
+    // Serial.println("Red");
   }
 
   // int speed = 300;
