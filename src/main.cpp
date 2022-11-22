@@ -109,7 +109,7 @@ void changedConnectionCallback() {
   pool->updatePeers(mesh.getNodeList());
   sendInfo();
 
-  Serial.printf("Num nodes: %d \n", mesh.getNodeList());
+  Serial.printf("Num nodes: %d \n", mesh.getNodeList().size());
 }
 
 void nodeTimeAdjustedCallback(int32_t offset) {
