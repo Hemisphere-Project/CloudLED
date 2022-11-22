@@ -151,7 +151,7 @@ class PeersPool  {
         int size() {
           int count = 0;
           for(int i=0; i<PEER_MAX; i++) {
-            if (peers[i].nodeId != 0) count++;
+            if (peers[i].nodeId != 0 && peers[i].channel > -1) count++;
           }
           return count;
         }
