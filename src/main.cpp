@@ -186,7 +186,7 @@ void loop()
     int channel = pool->getChannel(mesh.getNodeId());
     Serial.println("My channel: " + String(channel));
 
-    if (channel == phase) 
+    if (phase = pool->position()) 
     {
       Serial.println("My turn !");
       strip->all( CRGBW{255,255,255} );
