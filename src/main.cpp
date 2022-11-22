@@ -180,13 +180,10 @@ void loop()
 
   if (phase != lastPhase) 
   {
-    Serial.println("Phase: " + String(phase));
+    Serial.println("Phase: " + String(phase)+ " // Position: " + String(pool->position()) );
     lastPhase = phase;
 
-    int channel = pool->getChannel(mesh.getNodeId());
-    Serial.println("My channel: " + String(channel));
-
-    if (phase = pool->position()) 
+    if (phase == pool->position()) 
     {
       Serial.println("My turn !");
       strip->all( CRGBW{255,255,255} );
