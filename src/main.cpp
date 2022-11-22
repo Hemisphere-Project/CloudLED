@@ -33,6 +33,7 @@ Scheduler userScheduler; // to control your personal task
 ////
 
 int lastPhase = -1;
+int lastPosition = -1;
 
 
 // USER LOOP TASK 
@@ -178,10 +179,11 @@ void loop()
   int time = (mesh.getNodeTime()/1000) % (1000*pool->count()) ;
   int phase = time / 1000;
 
-  if (phase != lastPhase) 
+  if (phase != lastPhase || pool->position() != lastPosition)  
   {
     Serial.println("Phase: " + String(phase)+ " // Position: " + String(pool->position()) );
     lastPhase = phase;
+    lastPosition = pool->position();
 
     if (phase == pool->position()) 
     {
