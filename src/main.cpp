@@ -29,7 +29,7 @@ Scheduler userScheduler; // to control your personal task
 #define   MESH_PASSWORD   "somethingSneaky!"
 
 //// Disable once flashed (EEPROM stored)
-#define K32_SET_NODEID 4      // board unique id  
+// #define K32_SET_NODEID 4      // board unique id  
 ////
 
 
