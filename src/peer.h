@@ -183,13 +183,8 @@ class PeersPool  {
 
           // Chan Position
           _chanPosition = 0;
-          for(int i=0; i<_channel; i++) {
-            for(int j=0; j<PEER_MAX; j++)
-              if (peers[j].nodeId != 0 && peers[j].channel >= 0 && peers[j].channel < i) {
-                _chanPosition++;
-                break;
-              }
-          }
+          for(int i=0; i<_channel; i++)
+            if (channels[i] > 0) _chanPosition++;
 
           // Peers position
           _peerPosition = 0;
