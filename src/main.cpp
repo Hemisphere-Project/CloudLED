@@ -32,11 +32,26 @@ Scheduler userScheduler; // to control your personal task
 // #define K32_SET_NODEID 4      // board unique id  
 ////
 
-int lastPhase = -1;
+int lastRound = -1;
+int lastTurn = -1;
 int lastPosition = -1;
 
+uint32_t lastMeshMillis = 0;
+uint32_t meshMillisOffset = 0;
 
-// USER LOOP TASK 
+// meshMillis (handle mesh µS overflow) -> will overflow after ~50 days
+uint32_t meshMillis() 
+{
+  uint32_t meshMillis = mesh.getNodeTime()/1000 + meshMillisOffset;
+  if (meshMillis < lastMeshMillis) {
+    meshMillisOffset = lastMeshMillis;
+    meshMillis = mesh.getNodeTime()/1000 + meshMillisOffset;
+  }
+  lastMeshMillis = meshMillis;
+  return meshMillis;
+}
+
+// Send Info 
 void sendInfo() 
 {
   // I don't know others => send my channel
@@ -60,7 +75,7 @@ Task userLoopTask( TASK_MILLISECOND * 5000 , TASK_FOREVER, &sendInfo );
 // Needed for painless library
 void receivedCallback( uint32_t from, String &msg ) 
 {
-  Serial.printf("-- Received from %u msg=%s\n", from, msg.c_str());
+  // Serial.printf("-- Received from %u msg=%s\n", from, msg.c_str());
 
   // Receive channels list from Remote
   if (msg.startsWith("CL=")) 
@@ -98,23 +113,14 @@ void receivedCallback( uint32_t from, String &msg )
   }
 
   // else 
-  Serial.printf("Pool position: %d // size: %d\n", pool->position(), pool->size());
-}
-
-void newConnectionCallback(uint32_t nodeId) {
-    // Serial.printf("--> New Connection, nodeId = %u\n", nodeId);
+  // Serial.printf("Pool position: %d // size: %d\n", pool->position(), pool->size());
 }
 
 void changedConnectionCallback() 
 {
   Serial.printf("Changed connections, node count = %d \n", mesh.getNodeList().size());
-
   pool->updatePeers(mesh.getNodeList());
   sendInfo();
-}
-
-void nodeTimeAdjustedCallback(int32_t offset) {
-  // Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(), offset);
 }
 
 
@@ -162,9 +168,7 @@ void setup()
   
   // SET MESH
   mesh.onReceive(&receivedCallback);
-  mesh.onNewConnection(&newConnectionCallback);
   mesh.onChangedConnections(&changedConnectionCallback);
-  mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
 
   userScheduler.addTask( userLoopTask );
   userLoopTask.enable();
@@ -176,16 +180,26 @@ void loop()
 
   mesh.update();
 
-  int time = (mesh.getNodeTime()/1000) % (1000*pool->count()) ;
-  int phase = time / 1000;
+  // NOW
+  uint32_t now = meshMillis();
+  
+  // ROUND / TURN - DURATION
+  uint32_t animDuration = 1000;
+  uint32_t roundDuration = animDuration * pool->count();
+  
+  // ROUND & TURN - CALC
+  int turn = (now % roundDuration) / animDuration; 
+  int round = now / roundDuration;
 
-  if (phase != lastPhase || pool->position() != lastPosition)  
+  // SITUATION CHANGED
+  if (turn != lastTurn || round != lastRound || pool->position() != lastPosition)  
   {
-    Serial.println("Phase: " + String(phase)+ " // Position: " + String(pool->position()) );
-    lastPhase = phase;
+    Serial.println("Round: "+ String(round)+ " // Turn: " + String(turn)+ " // My position: " + String(pool->position()) );
+    lastRound = round;
+    lastTurn = turn;
     lastPosition = pool->position();
 
-    if (phase == pool->position()) 
+    if (turn == pool->position()) 
     {
       Serial.println("My turn !");
       strip->all( CRGBW{255,255,255} );

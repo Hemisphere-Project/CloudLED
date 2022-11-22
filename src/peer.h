@@ -142,18 +142,21 @@ class PeersPool  {
           }
         }
 
+        // Number of other peers with valid channels
         int size() 
         {
           calculate();
           return _size;
         }
 
+        // Number of distinct active channels
         int count() 
         {
           calculate();
           return _distinctChannels;
         }
 
+        // Position of owner in the active channel list
         int position() 
         {
           calculate();
