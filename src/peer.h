@@ -157,7 +157,7 @@ class PeersPool  {
         int position() 
         {
           calculate();
-          return _position;
+          return _chanPosition;
         }
 
         void calculate() 
@@ -181,12 +181,22 @@ class PeersPool  {
           for(int i=0; i<32; i++)
             if (channels[i] > 0) _distinctChannels++;
 
-          // Position
-          _position = 0;
+          // Chan Position
+          _chanPosition = 0;
+          for(int i=0; i<_channel; i++) {
+            for(int j=0; j<PEER_MAX; j++)
+              if (peers[j].nodeId != 0 && peers[j].channel >= 0 && peers[j].channel < i) {
+                _chanPosition++;
+                break;
+              }
+          }
+
+          // Peers position
+          _peerPosition = 0;
           for(int i=0; i<PEER_MAX; i++)
             if (peers[i].channel >= 0) 
-              if (peers[i].channel < _channel) _position++;
-              else if (peers[i].channel == _channel && peers[i].nodeId < _nodeId) _position++;
+              if (peers[i].channel < _channel) _peerPosition++;
+              else if (peers[i].channel == _channel && peers[i].nodeId < _nodeId) _peerPosition++;
 
           _dirty = false;
         }
@@ -196,7 +206,7 @@ class PeersPool  {
         }
 
         bool isMaster() {
-          return !isSolo() && position() == 0;
+          return !isSolo() && _peerPosition == 0;
         }
 
         uint32_t ownerID() {
@@ -223,7 +233,8 @@ class PeersPool  {
         int _channel = -1;
 
         int _size = 0;
-        int _position = 0;
+        int _chanPosition = 0;
+        int _peerPosition = 0;
         int _distinctChannels = 0;
 
         bool _dirty = true;
