@@ -1,0 +1,3 @@
+#!/bin/bash
+
+painlessMeshBoost --ota-dir .pio/build/bridge/
