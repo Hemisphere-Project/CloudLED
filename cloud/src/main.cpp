@@ -11,7 +11,7 @@ K32_buttons* buttons = nullptr;
 
 #include "light.h"
 #include "anim_cloudled.h"
-#include "anim_dmx_strip.h"
+// #include "anim_dmx_strip.h"
 
 #include "peer.h"
 PeersPool* pool;
@@ -220,8 +220,10 @@ void setup()
 
 
   // CREATE ANIMATIONS
+  addMacro(new Anim_cloud_crawler, 1500)->master(100);
   addMacro(new Anim_cloud_wind, 3000)->master(100);
   addMacro(new Anim_cloud_breath, 3000)->master(100);
+  addMacro(new Anim_cloud_sparkle, 3000)->master(100);
 
   // addMacro(new Anim_cloud_noel);
   // addMacro(new Anim_cloud_stars);
@@ -255,15 +257,12 @@ void setup()
 
 void loop() 
 { 
-
-  mesh.update();
-
-  // NOW
-  uint32_t now = meshMillis();
-
   // ANIMATE
   if (state == MESH)  
   {
+    mesh.update();
+    uint32_t now = meshMillis();
+
     K32_anim* anim = activeMacro();
 
     if (anim) 
@@ -283,10 +282,21 @@ void loop()
 
   else if (state == WIFI) 
   {
-    int val = (now/20)%50 + 50;
-    if (wifi && wifi->otaInProgress()) strip->all(val,0,val);
-    else if (wifi && wifi->isConnected()) strip->all(0,val,val);
-    else strip->all(0,0,val);
+    uint32_t now = meshMillis();
+
+    byte val = (now/15)%70 + 30;
+    CRGBW color = CRGBW::DarkBlue;
+
+    if (wifi && wifi->otaInProgress()) 
+    {
+      color = CRGBW::HotPink;
+      delay(500);
+    }
+    else if (wifi && wifi->isConnected()) 
+      color = CRGBW::Cyan;
+    
+    color %= val;
+    strip->all( color );
   }
 
   // 

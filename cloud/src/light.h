@@ -5,7 +5,7 @@ K32_light* light = nullptr;
 K32_fixture* strip = NULL;
 
 #define PIN_STRIP 27         // OLIMEX 5 / ATOM 27
-#define LULU_STRIP_SIZE 735
+#define LULU_STRIP_SIZE 25  // 735 - 
 
 /// ANIMATIONS & MACRO
 K32_anim* anims[16] = {NULL};
