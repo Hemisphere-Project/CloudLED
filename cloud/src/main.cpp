@@ -24,12 +24,12 @@ Scheduler userScheduler; // to control your personal task
 
 #define CLOUD_VERSION 1
 
-
+#define   MESH_CHANNEL    6
 #define   MESH_PREFIX     "CloudLED"
 #define   MESH_PASSWORD   "somethingSneaky!"
 
 //// Disable once flashed (EEPROM stored)
-// #define K32_SET_NODEID 1      // board unique id  
+// #define K32_SET_NODEID 2      // board unique id  
 ////
 
 int lastRound = -1;
@@ -154,6 +154,9 @@ void nodeTimeAdjustedCallback(int32_t offset) {
 
 void setup() 
 {
+  pinMode(23, INPUT);
+  digitalWrite(23, HIGH);
+
   k32 = new K32();
 
   // SET ID
@@ -166,8 +169,7 @@ void setup()
   Serial.println("Channel: " + String(k32->system->channel()));
 
   buttons = new K32_buttons(k32);
-  buttons->add(34, "BUT1");  
-  buttons->add(39, "PUSH");  
+  buttons->add(PUSH_PIN, "PUSH");  
 
   k32->on("btn/PUSH-off", [](Orderz *order)
   { 
@@ -203,7 +205,7 @@ void setup()
   // START MESH
   // mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
   mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
-  mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, 5555, WIFI_AP_STA, 6, 1 );
+  mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, 5555, WIFI_AP_STA, MESH_CHANNEL, 1 );
 
   // POOL
   pool = new PeersPool(mesh.getNodeId(), k32->system->channel());
@@ -218,17 +220,19 @@ void setup()
   userLoopTask1.enable();
   userLoopTask2.enable();
 
+  int master = 255;
+
 
   // CREATE ANIMATIONS
-  addMacro(new Anim_cloud_crawler, 1500)->master(100);
-  addMacro(new Anim_cloud_wind, 3000)->master(100);
-  addMacro(new Anim_cloud_breath, 3000)->master(100);
-  addMacro(new Anim_cloud_sparkle, 3000)->master(100);
+  addMacro(new Anim_cloud_breath, 3000)->master(master);
+  addMacro(new Anim_cloud_wind, 3000)->master(master);
+  addMacro(new Anim_cloud_rainbow, 3000)->master(master);
+  addMacro(new Anim_cloud_crawler, 3000)->master(master);
+  addMacro(new Anim_cloud_sparkle, 3000)->master(master);
 
   // addMacro(new Anim_cloud_noel);
   // addMacro(new Anim_cloud_stars);
   // addMacro(new Anim_cloud_rainbow);
-  int master = 100;
 
   //{master , r  , g  , b  , w  ,pix mod , pix long , pix_pos , str_mod , str_speed , r_fond , g_fond , b_fond , w_fond , mirror_mod , zoom }
   //{0      , 1  , 2  , 3  , 4  ,5       , 6        , 7       , 8       , 9         , 10     , 11     , 12     , 13     , 14         , 15   } adr + -1

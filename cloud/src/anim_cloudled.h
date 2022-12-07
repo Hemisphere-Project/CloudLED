@@ -1,15 +1,15 @@
 #include <K32_light.h>
 
-CRGBW colorPreset[25] = {
-  {CRGBW::Black},         // 0
-  {CRGBW::Red},           // 1
-  {CRGBW::Lime},          // 2
-  {CRGBW::Blue},          // 3
-  {CRGBW::White},         // 4
-  {CRGBW::Yellow},        // 5
-  {CRGBW::Magenta},       // 6
-  {CRGBW::Cyan},          // 7
-  {CRGBW::Orange}         // 8
+#define N_COLOR 7
+
+CRGBW colorPreset[N_COLOR] = {
+  {CRGBW::Red},           // 0
+  {CRGBW::Lime},          // 1
+  {CRGBW::Blue},          // 2
+  {CRGBW::Yellow},        // 3
+  {CRGBW::Magenta},       // 4
+  {CRGBW::Cyan},          // 5
+  {CRGBW::Orange}         // 6
 };
 
 // WIND
@@ -51,7 +51,9 @@ class Anim_cloud_wind : public K32_anim {
 //
 class Anim_cloud_breath : public K32_anim {
   public:
-    void init() {}
+    CRGBW background;
+
+    void init() { this->background = colorPreset[random(0,N_COLOR)]; }
     void draw (int data[ANIM_DATA_SLOTS])
     { 
       int duration = data[0];
@@ -62,11 +64,9 @@ class Anim_cloud_breath : public K32_anim {
       int count = data[5];
       
       float progress = time*1.0f/duration;
-      int breath = (0.5f + 0.5f * sin(2 * PI * progress)) * 255;
+      byte breath = (0.5f + 0.5f * sin(2 * PI * progress)) * 255;
 
-      // DRAW ON STRIP
-      /////////////////////////////////////////////////////////////////////////
-      this->all( CRGBW{breath,0,breath} );
+      this->all( (CRGBW)(background%breath) );
     }
 };
 
@@ -115,7 +115,7 @@ class Anim_cloud_crawler : public K32_anim {
     CRGBW background;
     
     void init() {
-      this->background = colorPreset[random(1,9)];
+      this->background = colorPreset[random(0,N_COLOR)];
     }
 
     void draw (int data[ANIM_DATA_SLOTS])
@@ -128,18 +128,14 @@ class Anim_cloud_crawler : public K32_anim {
       int count = data[5];
       
       float progress = time*1.0f/duration;
-
-      // 2x slower breath
-      float progx2 = (progress + (turn+round*count)%2)/2;
-
-      int breath = (0.5f + 0.5f * sin(2 * PI * progx2 )) * 255;
-
-      // BACKGROUND
-      this->all( this->background % (127+breath/2) );
-
-      // CRAWLER
+      
       if (turn == position) 
       {
+
+        // BACKGROUND
+        this->all( this->background );
+
+        // CRAWLER
         int pos = (int)(progress * this->size());
         for (int i=pos; i>pos-3; i--) {
           if (i >= 0 && i < this->size()) {
@@ -147,6 +143,40 @@ class Anim_cloud_crawler : public K32_anim {
           }
         }
       }
+      else
+      {
+        // float progx2 = (progress + (turn+round*count)%2)/2;
+
+        int breath = (0.5f + 0.5f * cos(2 * PI * progress )) * 255;
+        this->all( (CRGBW) (this->background % (127+breath/2)) );
+      }
+
+
+    }
+};
+
+
+// RAINBOW
+//
+class Anim_cloud_rainbow : public K32_anim {
+  public:
+    
+    void init() {}
+
+    void draw (int data[ANIM_DATA_SLOTS])
+    { 
+      int duration = data[0];
+      int time    = data[1];
+      int round   = data[2];
+      int turn    = data[3];
+      int position = data[4];
+      int count = data[5];
+      
+      int offset = this->size() * time / duration;
+      
+      CRGBW colorWheel;
+      for(int i=0; i<this->size(); i++)
+        this->pixel(i, colorWheel.setHue( 255 * ((i+offset) % this->size()) / this->size() ) );
 
     }
 };
