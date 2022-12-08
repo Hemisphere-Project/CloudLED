@@ -30,12 +30,14 @@ Scheduler userScheduler; // to control your personal task
 
 //// Disable once flashed (EEPROM stored)
 // #define K32_SET_NODEID 3      // board unique id  
+// #define HW_REVISION 1     // 0 = DevC - 1 = Atom
 ////
+
 uint32_t lastMeshMillis = 0;
 uint32_t meshMillisOffset = 0;
 uint32_t switchWifiAt = 0;
 
-bool longPress = false;
+int longPress = 0;
 
 enum State { MACRO, LOOP, WIFI };
 State state = MACRO;
@@ -53,6 +55,10 @@ uint32_t meshMillis()
   lastMeshMillis = meshMillis;
   return meshMillis;
 }
+
+////////////////////////////////
+////////   INFO         ////////
+////////////////////////////////
 
 // Send Info 
 void sendInfo() 
@@ -90,16 +96,21 @@ void sendMacro(int forced = 0)
   }
 }
 
-void sendMacroAuto() { sendMacro(0); }
+void sendMacroAuto() { sendMacro(); }
+
+Task userLoopTask1( TASK_MILLISECOND * 10000 , TASK_FOREVER, &sendInfo );
+Task userLoopTask2( TASK_MILLISECOND * 10000 , TASK_FOREVER, &sendMacroAuto );
 
 
-Task userLoopTask1( TASK_MILLISECOND * 5000 , TASK_FOREVER, &sendInfo );
-Task userLoopTask2( TASK_MILLISECOND * 2000 , TASK_FOREVER, &sendMacroAuto );
+////////////////////////////////
+////////   MESH         ////////
+////////////////////////////////
+
 
 // Needed for painless library
 void receivedCallback( uint32_t from, String &msg ) 
 {
-  if (switchWifiAt > 1) return;
+  if (switchWifiAt > 1) return;  // We are toggling wifi, ignore mesh
   
   Serial.printf("-- Received from %u msg=%s\n", from, msg.c_str());
 
@@ -165,8 +176,7 @@ void receivedCallback( uint32_t from, String &msg )
     Serial.println("Received WIFI");
     switchWifiAt = millis()+5000;
     activeMacro()->stop();
-    light->anim("flash")->push(4, 80)->play();
-   // TODO: go into WIFI state
+    light->anim("flash")->push(6, 50, 100)->play();
   }
 
   // else 
@@ -176,10 +186,11 @@ void receivedCallback( uint32_t from, String &msg )
 void changedConnectionCallback() 
 {
   pool->ownerID(mesh.getNodeId());
-  Serial.printf("I am, ownerID = %lu %lu\n", pool->ownerID(), mesh.getNodeId());
+  // Serial.printf("I am, ownerID = %lu %lu\n", pool->ownerID(), mesh.getNodeId());
   Serial.printf("Changed connections, node count = %d \n", mesh.getNodeList().size());
   pool->updatePeers(mesh.getNodeList());
   sendInfo();
+  sendMacro();
 }
 
 void nodeTimeAdjustedCallback(int32_t offset) {
@@ -201,6 +212,10 @@ void switchToWifi() {
   wifi->connect("hmsphr", "hemiproject");
 }
 
+////////////////////////////////
+////////   SETUP        ////////
+////////////////////////////////
+
 void setup() 
 {
   pinMode(23, INPUT);
@@ -214,17 +229,23 @@ void setup()
     k32->system->channel(K32_SET_NODEID);
   #endif
 
+  // SET HARDWARE
+  #ifdef HW_REVISION
+    k32->system->hw(HW_REVISION);
+  #endif
+
   k32->system->channel(k32->system->id());
   Serial.println("Channel: " + String(k32->system->channel()));
 
   buttons = new K32_buttons(k32);
-  buttons->add(PUSH_PIN, "PUSH");  
+  if (k32->system->hw() == 0) buttons->add(21, "PUSH");        // DevC
+  else if (k32->system->hw() == 1) buttons->add(39, "PUSH");   // Atom
 
   k32->on("btn/PUSH-off", [](Orderz *order)
   { 
     // Ignore PUSH-off after long press
     if (longPress) {
-      longPress = false;
+      longPress = 0;
       return;
     }
 
@@ -247,26 +268,28 @@ void setup()
 
   k32->on("btn/PUSH-long", [](Orderz *order)
   { 
-    longPress = true;
-    activeMacro()->stop();
+    longPress += 1;
 
-    // MACRO -> LOOP
-    if (state == MACRO) {
+    // -> LOOP
+    if (longPress == 1) {
+      activeMacro()->stop();
       light->anim("flash")->push(1, 500)->play()->wait();
       state = LOOP;
       LOG("STATE: LOOP");
       sendMacro(true); 
     }
 
-    // LOOP -> WIFI
-    else if (state == LOOP) {
+    // -> WIFI
+    else if (longPress == 2) {
       switchWifiAt = 1;
       mesh.sendBroadcast("WIFI", true);
-    } 
+    }
+
   });
   
   // LOAD LIGHT
-  lightSetup(k32);
+  if (k32->system->hw() == 0) lightSetup(k32, 750, LED_WS2815_V1, 22);            // DevC
+  else if (k32->system->hw() == 1) lightSetup(k32, 25, LED_WS2812B_V3, 27);       // Atom
 
   // START MESH
   // mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
@@ -297,21 +320,6 @@ void setup()
   addMacro(new Anim_cloud_crawler, 2000, 1)->master(master);
   addMacro(new Anim_cloud_sparkle, 3000, 1)->master(master);
 
-  // addMacro(new Anim_cloud_noel);
-  // addMacro(new Anim_cloud_stars);
-  // addMacro(new Anim_cloud_rainbow);
-
-  //{master , r  , g  , b  , w  ,pix mod , pix long , pix_pos , str_mod , str_speed , r_fond , g_fond , b_fond , w_fond , mirror_mod , zoom }
-  //{0      , 1  , 2  , 3  , 4  ,5       , 6        , 7       , 8       , 9         , 10     , 11     , 12     , 13     , 14         , 15   } adr + -1
-
-  // addMacro(new Anim_dmx_strip, 3000)
-  //   ->push( master, 0, 255, 255, 255, 0, 1, 127, 150, 100, 0, 0, 0, 0, 0,  255)
-  //   ->mod("wind", new K32_mod_pulse)->absolute()->mini(150)->maxi(151)->at(8)->period(100)->play(); // 0 : Wind in tree 
-  
-  // addMacro(new Anim_dmx_strip, 3000)->push( master, 255, 0, 255, 255, 0, 1, 127, 21, 3000, 0, 0, 0, 0, 0,  255); // 1 : Breath 
-
-  // addMacro(new Anim_dmx_strip, 3000)->push( master, 255, 0, 255, 255, 0, 1, 127, 21, 3000, 0, 0, 0, 0, 0,  255); // 1 : Breath 
-
   // k32->timer->every(1000, []() {
   //   // NOW
   //   uint32_t now = meshMillis();
@@ -325,13 +333,19 @@ void setup()
 
   setActiveMacro();
 
-  Serial.printf("I am, ownerID = %lu %lu\n", pool->ownerID(), mesh.getNodeId());
+  // Serial.printf("I am, ownerID = %lu %lu\n", pool->ownerID(), mesh.getNodeId());
 }
+
+
+////////////////////////////////
+////////   LOOP        /////////
+////////////////////////////////
 
 void loop() 
 { 
   // GO TO WIFI
-  if (switchWifiAt > 0 && state != WIFI) {
+  if (switchWifiAt > 0 && state != WIFI) 
+  {
     if( switchWifiAt > 1 && millis() > switchWifiAt ) {
       switchWifiAt = 0;
       switchToWifi();
@@ -369,74 +383,6 @@ void loop()
     strip->all( color );
   }
 
-  // 
-
-
-    // //
-    // // ANIMATE
-    // //
-    // int colorSel = round % 7; 
-    // int pixSel = time * LULU_STRIP_SIZE / (animDuration/4);
-
-    // if (turn == pool->position()) 
-    // {
-    //   int fade = 255;
-    //   // if (time < animDuration/2) fade = time * 255 / (animDuration/2);
-    //   // else fade = 255 - (time - animDuration/2) * 255 / (animDuration/2);
-
-    //   CRGBW color;
-
-    //   if (colorSel == 0) color = CRGBW(fade, fade, fade);
-    //   else if (colorSel == 1) color = CRGBW(fade, 0, 0);
-    //   else if (colorSel == 2) color = CRGBW(0, fade, 0);
-    //   else if (colorSel == 3) color = CRGBW(0, 0, fade);
-    //   else if (colorSel == 4) color = CRGBW(fade, fade, 0);
-    //   else if (colorSel == 5) color = CRGBW(fade, 0, fade);
-    //   else if (colorSel == 6) color = CRGBW(0, fade, fade);
-      
-    //   if (pixSel < 3) strip->all( CRGBW{0,0,0} );
-    //   if (pixSel > 30) strip->pix(pixSel-30, CRGBW{0,0,0});
-
-    //   if (pixSel > LULU_STRIP_SIZE) {
-    //     strip->all( color );
-    //     if (time> 7000 && time< 7500) strip->all( CRGBW{0,0,0} );
-    //   }
-    //   else strip->pix(pixSel, color);
-    // }
-    // else 
-    // {
-    //   strip->all( CRGBW{0,0,0} );
-    // }
-
-    //
-    //
-    //
-
-
-
-
-  // int speed = 300;
-
-  // strip->all( CRGBW{255,0,0} );
-  // delay(speed);
-
-  // strip->all( CRGBW{255,255,0} );
-  // delay(speed);
-
-  // strip->all( CRGBW{0,255,0} );
-  // delay(speed);
-
-  // strip->all( CRGBW{0,255,255} );
-  // delay(speed);
-
-  // strip->all( CRGBW{0,0,255} );
-  // delay(speed);
-
-  // strip->all( CRGBW{255,0,255} );
-  // delay(speed);
-
-  // strip->all( CRGBW{255,255,255} );
-  // delay(speed);
 
 
 }

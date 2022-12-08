@@ -4,22 +4,8 @@ K32_light* light = nullptr;
 #include <fixtures/K32_ledstrip.h>
 K32_fixture* strip = NULL;
 
-// #define ATOM 1
-
-#ifdef ATOM
-  #define PIN_STRIP 27                      // OLIMEX 5 / ATOM 27 / DevC 22
-  #define LULU_STRIP_SIZE 25                // 750 - 25
-  #define LULU_STRIP_TYPE LED_WS2812B_V3    //LED_WS2815_V1 // LED_WS2812B_V3
-  #define PUSH_PIN  39                      // Olimex 34 /  Atom 39 / DevC 21
-#else
-  #define PIN_STRIP 22              
-  #define LULU_STRIP_SIZE 750        
-  #define LULU_STRIP_TYPE LED_WS2815_V1  
-  #define PUSH_PIN  21 
-#endif
-
-
 /// ANIMATIONS & MACRO
+int stripSIZE = 0;
 K32_anim* anims[16] = {NULL};
 int durations[16] = {0};
 int loopLoop[16] = {0};
@@ -28,26 +14,34 @@ int macro = 0;
 int macroCount = 0;
 int lastRound = -1;
 
-void lightSetup(K32* k32) {
+void lightSetup(K32* k32, int stripSize, int stripType, int stripPin) {
   light = new K32_light(k32);
   light->loadprefs();
   
-  strip = new K32_ledstrip(0, PIN_STRIP, LULU_STRIP_TYPE, LULU_STRIP_SIZE);    
+  stripSIZE = stripSize;
+  strip = new K32_ledstrip(0, stripPin, stripType, stripSIZE);    
   light->addFixture( strip );
 
   // INIT TEST STRIPS
-  light->anim( "flash", new Anim_flash, LULU_STRIP_SIZE )
+  light->anim( "test", new Anim_test_strip, 10 )
+      ->drawTo(strip)
+      ->push(300)
+      ->play()
+      ->wait();
+
+  // INIT TEST STRIPS
+  light->anim( "flash", new Anim_flash, 10 )
       ->drawTo(strip)
       ->push(1, 100)
-      ->play();
+      ->play()
+      ->wait();
 
-  // WAIT END
-  light->anim("flash")->wait();
+
 }
 
 K32_anim* addMacro(K32_anim* anim, int duration, int loops=1) {
   if (macroCount == 16) return NULL;
-  light->anim( "cloud_"+String(macroCount), anim, LULU_STRIP_SIZE )
+  light->anim( "cloud_"+String(macroCount), anim, stripSIZE )
       ->drawTo(strip)
       ->master(255);
   durations[macroCount] = duration;
