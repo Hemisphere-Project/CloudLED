@@ -12,6 +12,7 @@ int loopLoop[16] = {0};
 int macro = 0;
 int macroCount = 0;
 uint32_t macroTimeOffset = 0;
+int macroChanged = false;
 
 void lightSetup(K32* k32, int stripSize, int stripType, int stripPin) {
   light = new K32_light(k32);
@@ -82,6 +83,7 @@ void setActiveMacro(uint32_t now, int n=-1) {
   }
   macroTimeOffset = now;
   LOG("Macro: "+String(macro));
+  macroChanged = true;
 }
 
 void nextMacro(uint32_t now) {

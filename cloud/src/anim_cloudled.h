@@ -1,15 +1,17 @@
 #include <K32_light.h>
 
-#define N_COLOR 7
+#define N_COLOR 8
 
 CRGBW colorPreset[N_COLOR] = {
-  {CRGBW::Red},           // 0
+  {CRGBW::Tomato},        // 0
   {CRGBW::Lime},          // 1
-  {CRGBW::Blue},          // 2
+  {CRGBW::DodgerBlue},    // 2
   {CRGBW::Yellow},        // 3
   {CRGBW::Magenta},       // 4
   {CRGBW::Cyan},          // 5
-  {CRGBW::Orange}         // 6
+  {CRGBW::Orange},         // 6
+  {CRGBW::Turquoise}       // 7
+
 };
 
 // WIND

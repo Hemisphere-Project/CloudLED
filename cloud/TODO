@@ -4,3 +4,6 @@
 - Long 3 (instead of long 2) for wifi mode
 
 - composite LOOP animations scenario ...
+
+- using local Offset in loop -> anim drifts
+=> progate Master offset

@@ -85,18 +85,20 @@ void sendMacro(int forced = 0)
 {
   // Master situation => send macro
   if (pool->isMaster()) {
-    if (state == MACRO) mesh.sendBroadcast( "M="+String(activeMacroNumber()) );
-    else if (state == LOOP) mesh.sendBroadcast( "L="+String(activeMacroNumber()) );
+    if (state == MACRO) mesh.sendBroadcast( "M="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
+    else if (state == LOOP) mesh.sendBroadcast( "L="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
   }
 
   // Btn pressed (forced) => inform Master
   else if (forced && pool->masterID() > 0) {
-    if (state == MACRO) mesh.sendSingle(pool->masterID(), "M="+String(activeMacroNumber()) );
-    else if (state == LOOP) mesh.sendSingle(pool->masterID(), "L="+String(activeMacroNumber()) );
+    if (state == MACRO) mesh.sendSingle(pool->masterID(), "M="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
+    else if (state == LOOP) mesh.sendSingle(pool->masterID(), "L="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
   }
 }
 
-void sendMacroAuto() { sendMacro(); }
+void sendMacroAuto() { 
+  if (state == MACRO) sendMacro(); 
+}
 
 Task userLoopTask1( TASK_MILLISECOND * 10000 , TASK_FOREVER, &sendInfo );
 Task userLoopTask2( TASK_MILLISECOND * 10000 , TASK_FOREVER, &sendMacroAuto );
@@ -154,9 +156,13 @@ void receivedCallback( uint32_t from, String &msg )
   if (msg.startsWith("M=")) 
   {
     Serial.println("Received macro from master");
-    int macro = msg.substring(2).toInt();
+    msg = msg.substring(2);
+    int pos = msg.indexOf(",");
+    int macro = msg.substring(0, pos).toInt();
+    int offset = msg.substring(pos+1).toInt();
     state = MACRO;
     setActiveMacro(meshMillis(), macro);
+    macroTimeOffset = offset;
     sendMacro();
   }
 
@@ -164,9 +170,13 @@ void receivedCallback( uint32_t from, String &msg )
   if (msg.startsWith("L=")) 
   {
     Serial.println("Received macro LOOP from master");
-    int macro = msg.substring(2).toInt();
+    msg = msg.substring(2);
+    int pos = msg.indexOf(",");
+    int macro = msg.substring(0, pos).toInt();
+    int offset = msg.substring(pos+1).toInt();
     state = LOOP;
     setActiveMacro(meshMillis(), macro);
+    macroTimeOffset = offset;
     sendMacro();
   }
 
@@ -319,7 +329,7 @@ void setup()
   addMacro(new Anim_cloud_flash,   150,  5)->master(master);
   addMacro(new Anim_cloud_crawler, 1000, 2)->master(master);
   addMacro(new Anim_cloud_sparkle, 3000, 1)->master(master);
-  
+
 
   setActiveMacro( meshMillis() );
 
@@ -342,6 +352,12 @@ void loop()
     }
     else mesh.update();
     return;
+  }
+
+  // INFO
+  if (macroChanged) {
+    sendMacro();
+    macroChanged = false;
   }
 
   // ANIMATE
