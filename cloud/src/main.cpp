@@ -156,7 +156,7 @@ void receivedCallback( uint32_t from, String &msg )
     Serial.println("Received macro from master");
     int macro = msg.substring(2).toInt();
     state = MACRO;
-    setActiveMacro(macro);
+    setActiveMacro(meshMillis(), macro);
     sendMacro();
   }
 
@@ -166,7 +166,7 @@ void receivedCallback( uint32_t from, String &msg )
     Serial.println("Received macro LOOP from master");
     int macro = msg.substring(2).toInt();
     state = LOOP;
-    setActiveMacro(macro);
+    setActiveMacro(meshMillis(), macro);
     sendMacro();
   }
 
@@ -198,7 +198,7 @@ void nodeTimeAdjustedCallback(int32_t offset) {
 }
 
 void switchToWifi() {
-  light->anim("flash")->push(1, 1000)->play()->wait();
+  light->anim("flash")->push(1, 1000, 100)->play()->wait();
   
   state = WIFI;
   LOG("STATE: WIFI");
@@ -256,9 +256,9 @@ void setup()
         LOG("STATE: MACRO");
       }
       activeMacro()->stop();
-      light->anim("flash")->push(1, 100)->play()->wait();
+      light->anim("flash")->push(1, 50, 100)->play()->wait();
       LOG("NEXT");
-      nextMacro();
+      nextMacro( meshMillis() );
       sendMacro(true); 
     }
     else if (state == WIFI)
@@ -273,7 +273,7 @@ void setup()
     // -> LOOP
     if (longPress == 1) {
       activeMacro()->stop();
-      light->anim("flash")->push(1, 500)->play()->wait();
+      light->anim("flash")->push(1, 1000, 300)->play()->wait();
       state = LOOP;
       LOG("STATE: LOOP");
       sendMacro(true); 
@@ -317,21 +317,11 @@ void setup()
   addMacro(new Anim_cloud_breath,  6000, 1)->master(master);
   addMacro(new Anim_cloud_rainbow, 3000, 1)->master(master);
   addMacro(new Anim_cloud_flash,   150,  5)->master(master);
-  addMacro(new Anim_cloud_crawler, 2000, 1)->master(master);
+  addMacro(new Anim_cloud_crawler, 1000, 2)->master(master);
   addMacro(new Anim_cloud_sparkle, 3000, 1)->master(master);
+  
 
-  // k32->timer->every(1000, []() {
-  //   // NOW
-  //   uint32_t now = meshMillis();
-  //   int duration = activeDuration();
-  //   uint32_t roundDuration = duration * pool->count();
-  //   int turn = (now % roundDuration) / duration; 
-  //   int round = now / roundDuration;
-  //   int time = now % duration;
-  //   LOG("=== Round: "+ String(round)+ " // Position: " + String(pool->position())+ " / Turn: " + String(turn) + " // Time: " + String(time) + " // Duration: " + String(duration) + " // Macro: " + String(activeMacro()->name()) );
-  // });
-
-  setActiveMacro();
+  setActiveMacro( meshMillis() );
 
   // Serial.printf("I am, ownerID = %lu %lu\n", pool->ownerID(), mesh.getNodeId());
 }

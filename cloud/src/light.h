@@ -9,10 +9,9 @@ int stripSIZE = 0;
 K32_anim* anims[16] = {NULL};
 int durations[16] = {0};
 int loopLoop[16] = {0};
-int loopCount[16] = {0};
 int macro = 0;
 int macroCount = 0;
-int lastRound = -1;
+uint32_t macroTimeOffset = 0;
 
 void lightSetup(K32* k32, int stripSize, int stripType, int stripPin) {
   light = new K32_light(k32);
@@ -23,16 +22,16 @@ void lightSetup(K32* k32, int stripSize, int stripType, int stripPin) {
   light->addFixture( strip );
 
   // INIT TEST STRIPS
-  light->anim( "test", new Anim_test_strip, 10 )
-      ->drawTo(strip)
-      ->push(300)
-      ->play()
-      ->wait();
+  // light->anim( "test", new Anim_test_strip, 10 )
+  //     ->drawTo(strip)
+  //     ->push(300)
+  //     ->play()
+  //     ->wait();
 
   // INIT TEST STRIPS
   light->anim( "flash", new Anim_flash, 10 )
       ->drawTo(strip)
-      ->push(1, 100)
+      ->push(1, 50)
       ->play()
       ->wait();
 
@@ -72,11 +71,7 @@ int activeDuration() {
   return getDuration(macro);
 }
 
-int activeLoopCount() {
-  return loopCount[macro];
-}
-
-void setActiveMacro(int n=-1) {
+void setActiveMacro(uint32_t now, int n=-1) {
   if (macro == n) return;
   if (n==-1) n = macro;
   if (n>=macroCount || n<0) return;
@@ -85,39 +80,32 @@ void setActiveMacro(int n=-1) {
     if (i==macro) light->anim("cloud_"+String(i))->play();
     else light->anim("cloud_"+String(i))->stop();
   }
-  lastRound = -1;
+  macroTimeOffset = now;
   LOG("Macro: "+String(macro));
 }
 
-void nextMacro() {
+void nextMacro(uint32_t now) {
   if (macroCount == 0) return;
-  setActiveMacro((macro+1) % macroCount);
+  setActiveMacro(now, (macro+1) % macroCount);
 }
 
 void updateMacro(uint32_t now, int position, int peers, int autoNext=0)
 {
-  // AUTO-NEXT 
-  if (autoNext && loopCount[macro] >= loopLoop[macro]) nextMacro();
+  uint32_t animNow = now - macroTimeOffset;
 
   // ROUND / TURN - DURATION
   int duration = activeDuration();
   uint32_t roundDuration = duration * peers;
-  
-  // ROUND & TURN - CALC
-  int turn = (now % roundDuration) / duration; 
-  int round = now / roundDuration;
-  int time = now % duration;
 
-  // ANIM LOOP COUNT
-  if (lastRound == -1) {
-    lastRound = round;
-    loopCount[macro] = 0;
-  }
-  if (lastRound != round) {
-    loopCount[macro] += 1;
-    lastRound = round;
-    // LOG("Macro: "+String(macro)+" - Loop: "+String(loopCount[macro]));
-  }
+  // ROUND & TURN - CALC
+  int turn = (animNow % roundDuration) / duration; 
+  int round = animNow / roundDuration;
+  int time = animNow % duration;
+
+  //   LOG("=== Round: "+ String(round)+ " // Position: " + String(pool->position())+ " / Turn: " + String(turn) + " // Time: " + String(time) + " // Duration: " + String(duration) + " // Macro: " + String(activeMacro()->name()) );
+
+  // AUTO-NEXT 
+  if (autoNext && round >= loopLoop[macro]) nextMacro(now);
 
   K32_anim* anim = activeMacro();
   if (anim) 
