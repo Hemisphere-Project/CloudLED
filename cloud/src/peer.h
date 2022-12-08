@@ -41,9 +41,11 @@ class PeersPool  {
             if (pos2 == -1) continue;
             String nodeId = peer.substring(0, pos2);
             String channel = peer.substring(pos2+1);
+            
+            unsigned long nID = strtoul(nodeId.c_str(), NULL, 10); ;
 
-            if (nodeId.toInt() == _nodeId) _channel = channel.toInt();
-            else addPeer(nodeId.toInt(), channel.toInt());
+            if (nID == _nodeId) _channel = channel.toInt();
+            else addPeer(nID, channel.toInt());
           }
         }
 
@@ -57,6 +59,7 @@ class PeersPool  {
         }
 
         void addPeer(uint32_t nodeId, int channel=-1) {
+          // LOG("Add peer: "+String(nodeId)+"="+String(channel));
           for(int i=0; i<PEER_MAX; i++) {
             if (peers[i].nodeId == nodeId) {
               peers[i].channel = channel;
@@ -209,6 +212,23 @@ class PeersPool  {
 
         uint32_t ownerID() {
           return _nodeId;
+        }
+
+        void ownerID(uint32_t id) {
+          _nodeId = id;
+        }
+
+        uint32_t masterID() {
+          if (isSolo()) return 0;
+          uint32_t mID = 0;
+          int mchan = 0;
+          for(int i=0; i<PEER_MAX; i++)
+            if (peers[i].channel >= 0) 
+              if (mID == 0 || peers[i].channel < mchan || (peers[i].channel == mchan && peers[i].nodeId < mID) ) {
+                mID = peers[i].nodeId;
+                mchan = peers[i].channel;
+              }
+          return mID;
         }
 
         int ownerChannel() {

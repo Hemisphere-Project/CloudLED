@@ -4,16 +4,29 @@ K32_light* light = nullptr;
 #include <fixtures/K32_ledstrip.h>
 K32_fixture* strip = NULL;
 
-#define PIN_STRIP 22              // OLIMEX 5 / ATOM 27 / DevC 22
-#define LULU_STRIP_SIZE 750        // 735 - 
-#define LULU_STRIP_TYPE LED_WS2815_V1   //LED_WS2815_V1 // LED_WS2812B_V3
-#define PUSH_PIN  21 // Olimex 34 /  Atom 39 / DevC 21
+// #define ATOM 1
+
+#ifdef ATOM
+  #define PIN_STRIP 27                      // OLIMEX 5 / ATOM 27 / DevC 22
+  #define LULU_STRIP_SIZE 25                // 750 - 25
+  #define LULU_STRIP_TYPE LED_WS2812B_V3    //LED_WS2815_V1 // LED_WS2812B_V3
+  #define PUSH_PIN  39                      // Olimex 34 /  Atom 39 / DevC 21
+#else
+  #define PIN_STRIP 22              
+  #define LULU_STRIP_SIZE 750        
+  #define LULU_STRIP_TYPE LED_WS2815_V1  
+  #define PUSH_PIN  21 
+#endif
+
 
 /// ANIMATIONS & MACRO
 K32_anim* anims[16] = {NULL};
 int durations[16] = {0};
+int loopLoop[16] = {0};
+int loopCount[16] = {0};
 int macro = 0;
 int macroCount = 0;
+int lastRound = -1;
 
 void lightSetup(K32* k32) {
   light = new K32_light(k32);
@@ -23,22 +36,22 @@ void lightSetup(K32* k32) {
   light->addFixture( strip );
 
   // INIT TEST STRIPS
-  light->anim( "test-strip", new Anim_test_strip, LULU_STRIP_SIZE )
+  light->anim( "flash", new Anim_flash, LULU_STRIP_SIZE )
       ->drawTo(strip)
-      ->push(200)
-      ->master(50)
+      ->push(1, 100)
       ->play();
 
   // WAIT END
-  light->anim("test-strip")->wait();
+  light->anim("flash")->wait();
 }
 
-K32_anim* addMacro(K32_anim* anim, int duration) {
+K32_anim* addMacro(K32_anim* anim, int duration, int loops=1) {
   if (macroCount == 16) return NULL;
   light->anim( "cloud_"+String(macroCount), anim, LULU_STRIP_SIZE )
       ->drawTo(strip)
       ->master(255);
   durations[macroCount] = duration;
+  loopLoop[macroCount] = loops;
   anims[macroCount++] = anim;
   return anims[macroCount-1];
 }
@@ -65,7 +78,12 @@ int activeDuration() {
   return getDuration(macro);
 }
 
+int activeLoopCount() {
+  return loopCount[macro];
+}
+
 void setActiveMacro(int n=-1) {
+  if (macro == n) return;
   if (n==-1) n = macro;
   if (n>=macroCount || n<0) return;
   macro = n;
@@ -73,12 +91,42 @@ void setActiveMacro(int n=-1) {
     if (i==macro) light->anim("cloud_"+String(i))->play();
     else light->anim("cloud_"+String(i))->stop();
   }
+  lastRound = -1;
   LOG("Macro: "+String(macro));
 }
 
 void nextMacro() {
   if (macroCount == 0) return;
-  macro = (macro+1) % macroCount;
-  setActiveMacro(macro);
+  setActiveMacro((macro+1) % macroCount);
+}
+
+void updateMacro(uint32_t now, int position, int peers, int autoNext=0)
+{
+  // AUTO-NEXT 
+  if (autoNext && loopCount[macro] >= loopLoop[macro]) nextMacro();
+
+  // ROUND / TURN - DURATION
+  int duration = activeDuration();
+  uint32_t roundDuration = duration * peers;
+  
+  // ROUND & TURN - CALC
+  int turn = (now % roundDuration) / duration; 
+  int round = now / roundDuration;
+  int time = now % duration;
+
+  // ANIM LOOP COUNT
+  if (lastRound == -1) {
+    lastRound = round;
+    loopCount[macro] = 0;
+  }
+  if (lastRound != round) {
+    loopCount[macro] += 1;
+    lastRound = round;
+    // LOG("Macro: "+String(macro)+" - Loop: "+String(loopCount[macro]));
+  }
+
+  K32_anim* anim = activeMacro();
+  if (anim) 
+    anim->push(duration, time, round, turn, position, peers );
 }
 

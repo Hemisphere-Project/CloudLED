@@ -38,7 +38,7 @@ class Anim_cloud_wind : public K32_anim {
       {
         for (int i=0; i<this->size(); i++) {
           byte rand = random(150, 250);
-          CRGBW color = (count > 1) ? CRGBW{0,rand,rand-50} : CRGBW{rand/2,rand,0};
+          CRGBW color = (count > 1) ? CRGBW{0,rand,rand-50} : CRGBW{rand/3,rand,0};
           this->pixel(i, color);
         }
         nextTime = time + random(30, 140);
@@ -64,7 +64,7 @@ class Anim_cloud_breath : public K32_anim {
       int count = data[5];
       
       float progress = time*1.0f/duration;
-      byte breath = (0.5f + 0.5f * sin(2 * PI * progress)) * 255;
+      byte breath = 70 + (0.5f + 0.5f * sin(2 * PI * progress)) * 185;
 
       this->all( (CRGBW)(background%breath) );
     }
@@ -120,30 +120,36 @@ class Anim_cloud_crawler : public K32_anim {
 
     void draw (int data[ANIM_DATA_SLOTS])
     { 
-      int duration = data[0];
-      int time    = data[1];
-      int round   = data[2];
-      int turn    = data[3];
-      int position = data[4];
-      int count = data[5];
+      int duration  = data[0];
+      int time      = data[1];
+      int round     = data[2];
+      int turn      = data[3];
+      int position  = data[4];
+      int count     = data[5];
       
       float progress = time*1.0f/duration;
+      
+      this->clear();
       
       if (turn == position) 
       {
 
-        // BACKGROUND
-        this->all( this->background );
+        int crawlerSize = 10;
 
         // CRAWLER
         int pos = (int)(progress * this->size());
-        for (int i=pos; i>pos-3; i--) {
+        for (int i=pos; i>pos-crawlerSize; i--) {
           if (i >= 0 && i < this->size()) {
             this->pixel(i, CRGBW{255,255,255});
           }
         }
+
+        // BACKGROUND
+        for (int i=pos-crawlerSize; i>=0; i--) 
+            this->pixel(i, this->background);
+
       }
-      else
+      else if (turn > position)
       {
         // float progx2 = (progress + (turn+round*count)%2)/2;
 
@@ -180,3 +186,32 @@ class Anim_cloud_rainbow : public K32_anim {
 
     }
 };
+
+// FLASH
+//
+class Anim_cloud_flash : public K32_anim {
+  public:
+    
+    void init() {}
+
+    void draw (int data[ANIM_DATA_SLOTS])
+    { 
+      int duration = data[0];
+      int time    = data[1];
+      int round   = data[2];
+      int turn    = data[3];
+      int position = data[4];
+      int count = data[5];
+      
+      int offset = 100 * time / duration;
+      
+      this->clear();
+      
+      if (turn == position) 
+      {
+        if (offset < 70) this->all( CRGBW::LightYellow );
+      }
+
+    }
+};
+

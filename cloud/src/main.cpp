@@ -29,20 +29,17 @@ Scheduler userScheduler; // to control your personal task
 #define   MESH_PASSWORD   "somethingSneaky!"
 
 //// Disable once flashed (EEPROM stored)
-// #define K32_SET_NODEID 2      // board unique id  
+// #define K32_SET_NODEID 3      // board unique id  
 ////
-
-int lastRound = -1;
-int lastTurn = -1;
-int lastPosition = -1;
-
 uint32_t lastMeshMillis = 0;
 uint32_t meshMillisOffset = 0;
+uint32_t switchWifiAt = 0;
 
 bool longPress = false;
 
-enum State { MESH, WIFI, OTA };
-State state = MESH;
+enum State { MACRO, LOOP, WIFI };
+State state = MACRO;
+
 
 
 // meshMillis (handle mesh µS overflow) -> will overflow after ~50 days
@@ -78,19 +75,32 @@ void sendInfo()
 }
 
 // Send Macro
-void sendMacro() 
+void sendMacro(int forced = 0) 
 {
-  if (pool->isMaster()) 
-    mesh.sendBroadcast( "M="+String(activeMacroNumber()) );
+  // Master situation => send macro
+  if (pool->isMaster()) {
+    if (state == MACRO) mesh.sendBroadcast( "M="+String(activeMacroNumber()) );
+    else if (state == LOOP) mesh.sendBroadcast( "L="+String(activeMacroNumber()) );
+  }
+
+  // Btn pressed (forced) => inform Master
+  else if (forced && pool->masterID() > 0) {
+    if (state == MACRO) mesh.sendSingle(pool->masterID(), "M="+String(activeMacroNumber()) );
+    else if (state == LOOP) mesh.sendSingle(pool->masterID(), "L="+String(activeMacroNumber()) );
+  }
 }
+
+void sendMacroAuto() { sendMacro(0); }
 
 
 Task userLoopTask1( TASK_MILLISECOND * 5000 , TASK_FOREVER, &sendInfo );
-Task userLoopTask2( TASK_MILLISECOND * 500 , TASK_FOREVER, &sendMacro );
+Task userLoopTask2( TASK_MILLISECOND * 2000 , TASK_FOREVER, &sendMacroAuto );
 
 // Needed for painless library
 void receivedCallback( uint32_t from, String &msg ) 
 {
+  if (switchWifiAt > 1) return;
+  
   Serial.printf("-- Received from %u msg=%s\n", from, msg.c_str());
 
   // Receive channels list from Remote
@@ -102,6 +112,7 @@ void receivedCallback( uint32_t from, String &msg )
     // I am missing from the list => inform remote
     if (remotePool->getChannel(pool->ownerID()) != pool->ownerChannel()) 
     {
+      LOGF3("%d %d %lu == ", remotePool->getChannel(pool->ownerID()), pool->ownerChannel(), pool->ownerID());
       Serial.println("Remote list doesnt know me => sending my channel");
       mesh.sendSingle(from, "C="+String(k32->system->channel()));
     
@@ -133,7 +144,29 @@ void receivedCallback( uint32_t from, String &msg )
   {
     Serial.println("Received macro from master");
     int macro = msg.substring(2).toInt();
+    state = MACRO;
     setActiveMacro(macro);
+    sendMacro();
+  }
+
+  // Receive macro LOOP from Master
+  if (msg.startsWith("L=")) 
+  {
+    Serial.println("Received macro LOOP from master");
+    int macro = msg.substring(2).toInt();
+    state = LOOP;
+    setActiveMacro(macro);
+    sendMacro();
+  }
+
+  // Go into WIFI
+  if (msg.startsWith("WIFI")) 
+  {
+    Serial.println("Received WIFI");
+    switchWifiAt = millis()+5000;
+    activeMacro()->stop();
+    light->anim("flash")->push(4, 80)->play();
+   // TODO: go into WIFI state
   }
 
   // else 
@@ -142,6 +175,8 @@ void receivedCallback( uint32_t from, String &msg )
 
 void changedConnectionCallback() 
 {
+  pool->ownerID(mesh.getNodeId());
+  Serial.printf("I am, ownerID = %lu %lu\n", pool->ownerID(), mesh.getNodeId());
   Serial.printf("Changed connections, node count = %d \n", mesh.getNodeList().size());
   pool->updatePeers(mesh.getNodeList());
   sendInfo();
@@ -151,6 +186,20 @@ void nodeTimeAdjustedCallback(int32_t offset) {
     Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
 }
 
+void switchToWifi() {
+  light->anim("flash")->push(1, 1000)->play()->wait();
+  
+  state = WIFI;
+  LOG("STATE: WIFI");
+
+  // stop MESH
+  mesh.stop();
+
+  // start WIFI
+  wifi = new K32_wifi(k32);
+  wifi->setHostname("cloud-"+String(k32->system->id())+"-v"+String(CLOUD_VERSION));
+  wifi->connect("hmsphr", "hemiproject");
+}
 
 void setup() 
 {
@@ -173,29 +222,46 @@ void setup()
 
   k32->on("btn/PUSH-off", [](Orderz *order)
   { 
-    if (state == MESH) {
-      nextMacro();
-      sendMacro(); 
+    // Ignore PUSH-off after long press
+    if (longPress) {
+      longPress = false;
+      return;
     }
-    else if (!longPress) 
+
+    if (state == MACRO || state == LOOP) 
+    {
+      if (state != MACRO) {
+        state = MACRO;
+        LOG("STATE: MACRO");
+      }
+      activeMacro()->stop();
+      light->anim("flash")->push(1, 100)->play()->wait();
+      LOG("NEXT");
+      nextMacro();
+      sendMacro(true); 
+    }
+    else if (state == WIFI)
       k32->system->reset();
     
-    longPress = false;
   });
 
   k32->on("btn/PUSH-long", [](Orderz *order)
   { 
     longPress = true;
     activeMacro()->stop();
-    if (state == MESH) {
-      state = WIFI;
-      // stop MESH
-      mesh.stop();
 
-      // start WIFI
-      wifi = new K32_wifi(k32);
-      wifi->setHostname("cloud-"+String(k32->system->id())+"-v"+String(CLOUD_VERSION));
-      wifi->connect("hmsphr", "hemiproject");
+    // MACRO -> LOOP
+    if (state == MACRO) {
+      light->anim("flash")->push(1, 500)->play()->wait();
+      state = LOOP;
+      LOG("STATE: LOOP");
+      sendMacro(true); 
+    }
+
+    // LOOP -> WIFI
+    else if (state == LOOP) {
+      switchWifiAt = 1;
+      mesh.sendBroadcast("WIFI", true);
     } 
   });
   
@@ -220,15 +286,16 @@ void setup()
   userLoopTask1.enable();
   userLoopTask2.enable();
 
-  int master = 255;
+  int master = 100;
 
 
   // CREATE ANIMATIONS
-  addMacro(new Anim_cloud_breath, 3000)->master(master);
-  addMacro(new Anim_cloud_wind, 3000)->master(master);
-  addMacro(new Anim_cloud_rainbow, 3000)->master(master);
-  addMacro(new Anim_cloud_crawler, 3000)->master(master);
-  addMacro(new Anim_cloud_sparkle, 3000)->master(master);
+  addMacro(new Anim_cloud_wind,    3000, 1)->master(master);
+  addMacro(new Anim_cloud_breath,  6000, 1)->master(master);
+  addMacro(new Anim_cloud_rainbow, 3000, 1)->master(master);
+  addMacro(new Anim_cloud_flash,   150,  5)->master(master);
+  addMacro(new Anim_cloud_crawler, 2000, 1)->master(master);
+  addMacro(new Anim_cloud_sparkle, 3000, 1)->master(master);
 
   // addMacro(new Anim_cloud_noel);
   // addMacro(new Anim_cloud_stars);
@@ -245,43 +312,42 @@ void setup()
 
   // addMacro(new Anim_dmx_strip, 3000)->push( master, 255, 0, 255, 255, 0, 1, 127, 21, 3000, 0, 0, 0, 0, 0,  255); // 1 : Breath 
 
-  k32->timer->every(1000, []() {
-    // NOW
-    uint32_t now = meshMillis();
-    int duration = activeDuration();
-    uint32_t roundDuration = duration * pool->count();
-    int turn = (now % roundDuration) / duration; 
-    int round = now / roundDuration;
-    int time = now % duration;
-    LOG("=== Round: "+ String(round)+ " // Position: " + String(pool->position())+ " / Turn: " + String(turn) + " // Time: " + String(time) + " // Duration: " + String(duration) + " // Macro: " + String(activeMacro()->name()) );
-  });
+  // k32->timer->every(1000, []() {
+  //   // NOW
+  //   uint32_t now = meshMillis();
+  //   int duration = activeDuration();
+  //   uint32_t roundDuration = duration * pool->count();
+  //   int turn = (now % roundDuration) / duration; 
+  //   int round = now / roundDuration;
+  //   int time = now % duration;
+  //   LOG("=== Round: "+ String(round)+ " // Position: " + String(pool->position())+ " / Turn: " + String(turn) + " // Time: " + String(time) + " // Duration: " + String(duration) + " // Macro: " + String(activeMacro()->name()) );
+  // });
 
   setActiveMacro();
+
+  Serial.printf("I am, ownerID = %lu %lu\n", pool->ownerID(), mesh.getNodeId());
 }
 
 void loop() 
 { 
+  // GO TO WIFI
+  if (switchWifiAt > 0 && state != WIFI) {
+    if( switchWifiAt > 1 && millis() > switchWifiAt ) {
+      switchWifiAt = 0;
+      switchToWifi();
+    }
+    else mesh.update();
+    return;
+  }
+
   // ANIMATE
-  if (state == MESH)  
+  if (state == MACRO || state == LOOP)  
   {
     mesh.update();
     uint32_t now = meshMillis();
 
-    K32_anim* anim = activeMacro();
-
-    if (anim) 
-    {      
-      // ROUND / TURN - DURATION
-      int duration = activeDuration();
-      uint32_t roundDuration = duration * pool->count();
-      
-      // ROUND & TURN - CALC
-      int turn = (now % roundDuration) / duration; 
-      int round = now / roundDuration;
-      int time = now % duration;
-      
-      anim->push(duration, time, round, turn, pool->position(), pool->count() );
-    }
+    // LOGF2("%d %d\n", pool->position(), pool->count());
+    updateMacro(now, pool->position(), pool->count(), state == LOOP);    
   }
 
   else if (state == WIFI) 
