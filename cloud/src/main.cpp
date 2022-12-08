@@ -374,7 +374,7 @@ void loop()
   {
     uint32_t now = meshMillis();
 
-    byte val = (now/15)%70 + 30;
+    byte val = (now/12)%100 + 0;
     CRGBW color = CRGBW::DarkBlue;
 
     if (wifi && wifi->otaInProgress()) 
