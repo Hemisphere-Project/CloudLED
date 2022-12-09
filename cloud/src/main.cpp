@@ -30,7 +30,7 @@ Scheduler userScheduler; // to control your personal task
 
 //// Disable once flashed (EEPROM stored)
 // #define K32_SET_NODEID 3      // board unique id  
-// #define HW_REVISION 1     // 0 = DevC - 1 = Atom
+// #define HW_REVISION 0     // 0 = DevC - 1 = Atom
 ////
 
 uint32_t lastMeshMillis = 0;
@@ -39,7 +39,9 @@ uint32_t switchWifiAt = 0;
 
 int longPress = 0;
 
-enum State { MACRO, LOOP, WIFI };
+int notAlone = 0;
+
+enum State { MACRO, LOOP, WIFI, OFF };
 State state = MACRO;
 
 
@@ -87,6 +89,7 @@ void sendMacro(int forced = 0)
   if (pool->isMaster()) {
     if (state == MACRO) mesh.sendBroadcast( "M="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
     else if (state == LOOP) mesh.sendBroadcast( "L="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
+    else if (state == OFF) mesh.sendBroadcast( "OFF" );
   }
 
   // Btn pressed (forced) => inform Master
@@ -100,8 +103,8 @@ void sendMacroAuto() {
   if (state == MACRO) sendMacro(); 
 }
 
-Task userLoopTask1( TASK_MILLISECOND * 10000 , TASK_FOREVER, &sendInfo );
-Task userLoopTask2( TASK_MILLISECOND * 10000 , TASK_FOREVER, &sendMacroAuto );
+Task userLoopTask1( TASK_MILLISECOND * 6000 , TASK_FOREVER, &sendInfo );
+Task userLoopTask2( TASK_MILLISECOND * 5000 , TASK_FOREVER, &sendMacroAuto );
 
 
 ////////////////////////////////
@@ -137,10 +140,12 @@ void receivedCallback( uint32_t from, String &msg )
       Serial.println("Remote is master, update my pool");
       pool->import(remotePool);
     }
+
+    delete(remotePool);
   }
 
   // Receive individual channel
-  if (msg.startsWith("C=")) 
+  else if (msg.startsWith("C=")) 
   {
     Serial.println("Received channel from remote");
     int channel = msg.substring(2).toInt();
@@ -153,7 +158,7 @@ void receivedCallback( uint32_t from, String &msg )
   }
 
   // Receive macro from Master
-  if (msg.startsWith("M=")) 
+  else if (msg.startsWith("M=") && state != OFF) 
   {
     Serial.println("Received macro from master");
     msg = msg.substring(2);
@@ -167,7 +172,7 @@ void receivedCallback( uint32_t from, String &msg )
   }
 
   // Receive macro LOOP from Master
-  if (msg.startsWith("L=")) 
+  else if (msg.startsWith("L=") && state != OFF) 
   {
     Serial.println("Received macro LOOP from master");
     msg = msg.substring(2);
@@ -181,12 +186,18 @@ void receivedCallback( uint32_t from, String &msg )
   }
 
   // Go into WIFI
-  if (msg.startsWith("WIFI")) 
+  else if (msg.startsWith("WIFI")) 
   {
     Serial.println("Received WIFI");
     switchWifiAt = millis()+5000;
     activeMacro()->stop();
     light->anim("flash")->push(6, 50, 100)->play();
+  }
+
+  else if (msg.startsWith("OFF")) 
+  {
+    state = OFF;
+    LOG("STATE: OFF");
   }
 
   // else 
@@ -271,8 +282,14 @@ void setup()
       nextMacro( meshMillis() );
       sendMacro(true); 
     }
-    else if (state == WIFI)
-      k32->system->reset();
+
+    // -> OFF again
+    else if (state == WIFI) {
+      state = OFF;
+      LOG("STATE: OFF");
+      light->anim("off")->push(1)->play();
+      // k32->system->reset();
+    }
     
   });
 
@@ -280,19 +297,50 @@ void setup()
   { 
     longPress += 1;
 
-    // -> LOOP
-    if (longPress == 1) {
-      activeMacro()->stop();
-      light->anim("flash")->push(1, 1000, 300)->play()->wait();
-      state = LOOP;
-      LOG("STATE: LOOP");
-      sendMacro(true); 
+    if (longPress == 1) 
+    {
+      // -> BLINK
+      if (state == OFF) {
+        light->anim("flash")->push(1, 50, 100)->play()->wait();
+      }
+
+      // -> LOOP
+      else if (state == MACRO || state == LOOP) {
+        activeMacro()->stop();
+        light->anim("flash")->push(1, 1500, 100)->play()->wait();
+        state = LOOP;
+        LOG("STATE: LOOP");
+        nextMacro( meshMillis() );
+        sendMacro(true);
+      } 
+
     }
 
-    // -> WIFI
-    else if (longPress == 2) {
-      switchWifiAt = 1;
-      mesh.sendBroadcast("WIFI", true);
+    
+    else if (longPress == 2) 
+    {
+      // -> WIFI
+      if (state == OFF) {
+        if (wifi) {
+          light->anim("flash")->push(1, 1000, 100)->play()->wait();
+          state = WIFI;
+          LOG("STATE: WIFI");
+        }
+        else {
+          switchWifiAt = 1;
+          mesh.sendBroadcast("WIFI", true);
+        }
+      }
+
+      // -> RESTART 
+      else if (state == WIFI) {
+        k32->system->reset();
+      }
+
+      // -> OFF
+      else {
+        mesh.sendBroadcast("OFF", true);
+      }
     }
 
   });
@@ -319,21 +367,32 @@ void setup()
   userLoopTask1.enable();
   userLoopTask2.enable();
 
-  int master = 100;
+  int master = 255;
 
 
   // CREATE ANIMATIONS
   addMacro(new Anim_cloud_wind,    3000, 1)->master(master);
+  addMacro(new Anim_cloud_sparkle, 100,  1)->master(master);
   addMacro(new Anim_cloud_breath,  6000, 1)->master(master);
-  addMacro(new Anim_cloud_rainbow, 3000, 1)->master(master);
   addMacro(new Anim_cloud_flash,   150,  5)->master(master);
-  addMacro(new Anim_cloud_crawler, 1000, 2)->master(master);
-  addMacro(new Anim_cloud_sparkle, 3000, 1)->master(master);
+  addMacro(new Anim_cloud_rainbow, 3000, 2)->master(master);
+  addMacro(new Anim_cloud_sparkle, 100,  1)->master(master);
+  addMacro(new Anim_cloud_crawler, 1000, 5)->master(master);
+  addMacro(new Anim_cloud_sparkle, 6000, 1)->master(master);
 
 
   setActiveMacro( meshMillis() );
 
   // Serial.printf("I am, ownerID = %lu %lu\n", pool->ownerID(), mesh.getNodeId());
+
+  // Heap Memory log
+  // k32->timer->every(1000, []() {
+  //   static int lastheap = 0;
+  //   int heap = ESP.getFreeHeap();
+  //   LOGF2("Free memory: %d / %d\n", heap, heap - lastheap);
+  //   lastheap = heap;
+  //   if (heap < 50000) LOGF2("WARNING: free memory < 50K, new task might not properly start. %d / %d\n", heap, heap - lastheap);
+  // });
 }
 
 
@@ -363,6 +422,11 @@ void loop()
   // ANIMATE
   if (state == MACRO || state == LOOP)  
   {
+    // Alone after being linked => reset
+    if (!pool->isSolo()) notAlone = 1;
+    else if (notAlone) k32->system->reset();
+
+    // Update
     mesh.update();
     uint32_t now = meshMillis();
 
@@ -386,7 +450,15 @@ void loop()
       color = CRGBW::Cyan;
     
     color %= val;
-    strip->all( color );
+    strip->clear();
+    for (int i=0; i<5; i++) strip->pix(i, color);
+  }
+  
+  else if (state == OFF)
+  {
+    mesh.update();
+    activeMacro()->stop();
+    light->anim("off")->push(1)->play();
   }
 
 

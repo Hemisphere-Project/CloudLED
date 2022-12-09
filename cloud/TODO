@@ -1,10 +1,11 @@
 
 
 - Lower Communication rate ?
-=> Try strip on Core1 ?
 
-- Long 3 (instead of long 2) for wifi mode
 
-- composite LOOP animations scenario ...
+- watchdog (FarAway based)   
 
-- Moving dashes animation
+- watchdog MESH => alone after not alone = restart
+
+- exit loop when alone
+

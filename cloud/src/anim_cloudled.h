@@ -158,6 +158,10 @@ class Anim_cloud_crawler : public K32_anim {
         int breath = (0.5f + 0.5f * cos(2 * PI * progress )) * 255;
         this->all( (CRGBW) (this->background % (127+breath/2)) );
       }
+      else 
+      {
+        this->all( (CRGBW) (this->background % 50) );
+      }
 
 
     }
@@ -216,4 +220,5 @@ class Anim_cloud_flash : public K32_anim {
 
     }
 };
+
 

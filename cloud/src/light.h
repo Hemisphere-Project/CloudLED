@@ -30,12 +30,15 @@ void lightSetup(K32* k32, int stripSize, int stripType, int stripPin) {
   //     ->wait();
 
   // INIT TEST STRIPS
-  light->anim( "flash", new Anim_flash, 10 )
+  light->anim( "flash", new Anim_flash, stripSIZE )
       ->drawTo(strip)
       ->push(1, 50)
       ->play()
       ->wait();
 
+  // OFF ANIM
+  light->anim( "off", new Anim_off, stripSIZE )
+      ->drawTo(strip);
 
 }
 
