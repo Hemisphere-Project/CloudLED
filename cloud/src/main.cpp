@@ -100,10 +100,10 @@ void sendMacro(int forced = 0)
 }
 
 void sendMacroAuto() { 
-  if (state == MACRO) sendMacro(); 
+  sendMacro(); 
 }
 
-Task userLoopTask1( TASK_MILLISECOND * 6000 , TASK_FOREVER, &sendInfo );
+Task userLoopTask1( TASK_MILLISECOND * 9100 , TASK_FOREVER, &sendInfo );
 Task userLoopTask2( TASK_MILLISECOND * 5000 , TASK_FOREVER, &sendMacroAuto );
 
 

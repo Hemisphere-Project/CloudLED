@@ -5,7 +5,4 @@
 
 - watchdog (FarAway based)   
 
-- watchdog MESH => alone after not alone = restart
-
-- exit loop when alone
 
