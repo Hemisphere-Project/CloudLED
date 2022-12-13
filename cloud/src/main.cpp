@@ -24,7 +24,7 @@ Scheduler userScheduler; // to control your personal task
 
 #define CLOUD_VERSION 1
 
-#define   MESH_CHANNEL    6
+#define   MESH_CHANNEL    10
 #define   MESH_PREFIX     "CloudLED"
 #define   MESH_PASSWORD   "somethingSneaky!"
 
@@ -35,7 +35,7 @@ Scheduler userScheduler; // to control your personal task
 
 uint32_t lastMeshMillis = 0;
 uint32_t meshMillisOffset = 0;
-uint32_t switchWifiAt = 0;
+uint32_t switchWifiAt = 0;    
 
 int longPress = 0;
 
