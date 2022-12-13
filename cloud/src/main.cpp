@@ -22,7 +22,7 @@ SimpleList<uint32_t> activesNodes;
 
 Scheduler userScheduler; // to control your personal task
 
-#define CLOUD_VERSION 1
+#define CLOUD_VERSION 2
 
 #define   MESH_CHANNEL    10
 #define   MESH_PREFIX     "CloudLED"
@@ -164,7 +164,8 @@ void receivedCallback( uint32_t from, String &msg )
     msg = msg.substring(2);
     int pos = msg.indexOf(",");
     int macro = msg.substring(0, pos).toInt();
-    int offset = msg.substring(pos+1).toInt();
+    String s_offset = msg.substring(pos+1);
+    unsigned long offset = strtoul(s_offset.c_str(), NULL, 10);
     state = MACRO;
     setActiveMacro(meshMillis(), macro);
     macroTimeOffset = offset;
@@ -178,7 +179,8 @@ void receivedCallback( uint32_t from, String &msg )
     msg = msg.substring(2);
     int pos = msg.indexOf(",");
     int macro = msg.substring(0, pos).toInt();
-    int offset = msg.substring(pos+1).toInt();
+    String s_offset = msg.substring(pos+1);
+    unsigned long offset = strtoul(s_offset.c_str(), NULL, 10);
     state = LOOP;
     setActiveMacro(meshMillis(), macro);
     macroTimeOffset = offset;
