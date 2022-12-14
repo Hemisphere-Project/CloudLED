@@ -28,9 +28,11 @@ Scheduler userScheduler; // to control your personal task
 #define   MESH_PREFIX     "CloudLED"
 #define   MESH_PASSWORD   "somethingSneaky!"
 
+const uint32_t AUTO_SHUTDOWN = 60*60*7;  // 7h
+
 //// Disable once flashed (EEPROM stored)
-// #define K32_SET_NODEID 3      // board unique id  
-// #define HW_REVISION 0     // 0 = DevC - 1 = Atom
+// #define K32_SET_NODEID 15      // board unique id  
+// #define HW_REVISION 0     // 0 = DevC - 1 = Atom - 2 = OLIMEX
 ////
 
 uint32_t lastMeshMillis = 0;
@@ -39,7 +41,7 @@ uint32_t switchWifiAt = 0;
 
 int longPress = 0;
 
-int notAlone = 0;
+uint32_t notAlone = 0;
 
 enum State { MACRO, LOOP, WIFI, OFF };
 State state = MACRO;
@@ -65,6 +67,11 @@ uint32_t meshMillis()
 // Send Info 
 void sendInfo() 
 {
+  if (state == OFF) {
+    mesh.sendBroadcast( "OFF" );
+    return;
+  }
+
   // I don't know others => send my channel
   //
   if (pool->isSolo()) 
@@ -75,7 +82,7 @@ void sendInfo()
 
   // Master situation => send channel list periodically
   //
-  if (pool->isMaster()) 
+  else if (pool->isLocalMaster()) 
   {
     Serial.println("Master... broadcast channel list !");
     mesh.sendBroadcast( "CL="+pool->toString() );
@@ -86,17 +93,18 @@ void sendInfo()
 void sendMacro(int forced = 0) 
 {
   // Master situation => send macro
-  if (pool->isMaster()) {
+  if (pool->isLocalMaster() || forced) {
     if (state == MACRO) mesh.sendBroadcast( "M="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
     else if (state == LOOP) mesh.sendBroadcast( "L="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
-    else if (state == OFF) mesh.sendBroadcast( "OFF" );
+    // else if (state == OFF) mesh.sendBroadcast( "OFF" );
   }
 
   // Btn pressed (forced) => inform Master
-  else if (forced && pool->masterID() > 0) {
-    if (state == MACRO) mesh.sendSingle(pool->masterID(), "M="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
-    else if (state == LOOP) mesh.sendSingle(pool->masterID(), "L="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
-  }
+  // else if (forced && pool->masterID() > 0) {
+  //   if (state == MACRO) mesh.sendSingle(pool->masterID(), "M="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
+  //   else if (state == LOOP) mesh.sendSingle(pool->masterID(), "L="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
+  // }
+  
 }
 
 void sendMacroAuto() { 
@@ -136,9 +144,15 @@ void receivedCallback( uint32_t from, String &msg )
     }
 
     // If remote is indeed master, update my pool
-    if (remotePool->isMaster()) {
-      Serial.println("Remote is master, update my pool");
-      pool->import(remotePool);
+    // if (remotePool->isMaster()) {
+      // Serial.println("Remote is master, update my pool");
+    pool->import(remotePool);
+    // }
+
+    // If remote has smaller set: inform him
+    if (remotePool->size() < pool->size()) {
+      Serial.println("Remote has smaller set => sending my channel list");
+      mesh.sendSingle(from, "CL="+pool->toString());
     }
 
     delete(remotePool);
@@ -235,6 +249,20 @@ void switchToWifi() {
   wifi->connect("hmsphr", "hemiproject");
 }
 
+void startMesh()
+{
+   // START MESH
+  // mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
+  mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
+  mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, 5555, WIFI_AP_STA, MESH_CHANNEL, 1 );
+
+  
+  // SET MESH
+  mesh.onReceive(&receivedCallback);
+  mesh.onChangedConnections(&changedConnectionCallback);
+  mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
+}
+
 ////////////////////////////////
 ////////   SETUP        ////////
 ////////////////////////////////
@@ -263,6 +291,7 @@ void setup()
   buttons = new K32_buttons(k32);
   if (k32->system->hw() == 0) buttons->add(21, "PUSH");        // DevC
   else if (k32->system->hw() == 1) buttons->add(39, "PUSH");   // Atom
+  else if (k32->system->hw() == 2) buttons->add(34, "PUSH");   // Olimex
 
   k32->on("btn/PUSH-off", [](Orderz *order)
   { 
@@ -350,19 +379,13 @@ void setup()
   // LOAD LIGHT
   if (k32->system->hw() == 0) lightSetup(k32, 750, LED_WS2815_V1, 22);            // DevC
   else if (k32->system->hw() == 1) lightSetup(k32, 25, LED_WS2812B_V3, 27);       // Atom
-
-  // START MESH
-  // mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
-  mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
-  mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, 5555, WIFI_AP_STA, MESH_CHANNEL, 1 );
+  else if (k32->system->hw() == 2) lightSetup(k32, 25, LED_WS2812B_V3, 5);        // OLIMEX
+  
+  // START MESH 
+  startMesh();
 
   // POOL
   pool = new PeersPool(mesh.getNodeId(), k32->system->channel());
-  
-  // SET MESH
-  mesh.onReceive(&receivedCallback);
-  mesh.onChangedConnections(&changedConnectionCallback);
-  mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
 
   userScheduler.addTask( userLoopTask1 );
   userScheduler.addTask( userLoopTask2 );
@@ -370,16 +393,16 @@ void setup()
   userLoopTask2.enable();
 
   int master = 255;
+  if(k32->system->hw() == 1) master = 50;
 
 
   // CREATE ANIMATIONS
-  addMacro(new Anim_cloud_wind,    3000, 1)->master(master);
+  addMacro(new Anim_cloud_wind,    2000, 1)->master(master);
+  addMacro(new Anim_cloud_crawler, 1000, 5)->master(master);
   addMacro(new Anim_cloud_sparkle, 100,  1)->master(master);
   addMacro(new Anim_cloud_breath,  6000, 1)->master(master);
   addMacro(new Anim_cloud_flash,   150,  5)->master(master);
   addMacro(new Anim_cloud_rainbow, 3000, 2)->master(master);
-  addMacro(new Anim_cloud_sparkle, 100,  1)->master(master);
-  addMacro(new Anim_cloud_crawler, 1000, 5)->master(master);
   addMacro(new Anim_cloud_sparkle, 6000, 1)->master(master);
 
 
@@ -395,6 +418,13 @@ void setup()
   //   lastheap = heap;
   //   if (heap < 50000) LOGF2("WARNING: free memory < 50K, new task might not properly start. %d / %d\n", heap, heap - lastheap);
   // });
+
+  // Refresh missing nodes
+  k32->timer->every(5000, []() {
+    pool->updatePeers(mesh.getNodeList());
+  });
+
+  
 }
 
 
@@ -425,15 +455,32 @@ void loop()
   if (state == MACRO || state == LOOP)  
   {
     // Alone after being linked => reset
-    if (!pool->isSolo()) notAlone = 1;
-    else if (notAlone) k32->system->reset();
+    if (notAlone != 1 && !pool->isSolo()) notAlone = 1;                // Not Alone
+    else if (pool->isSolo() && notAlone == 1) notAlone = millis();     // Became ISolated
+    else if (notAlone > 1 && millis()-notAlone > 60000)                // Isolatd for 60s   //k32->system->reset();
+    {
+      notAlone = 0;
+      LOG("MESH RESTART: isolated");
+      
+      // !!! BROKEN !!! AsyncTCP doesn't close properly...
+      // mesh.stop();
+      // delay(500);
+      // startMesh();
 
+    }
+
+    // AUTO-OFF
+    if (millis() > AUTO_SHUTDOWN*1000) {
+      state = OFF;
+      mesh.sendBroadcast("OFF", true);
+    }
+    
     // Update
     mesh.update();
     uint32_t now = meshMillis();
 
     // LOGF2("%d %d\n", pool->position(), pool->count());
-    updateMacro(now, pool->position(), pool->count(), state == LOOP);    
+    updateMacro(now, pool->position(), pool->count(), state == LOOP, pool->isSolo() );    
   }
 
   else if (state == WIFI) 

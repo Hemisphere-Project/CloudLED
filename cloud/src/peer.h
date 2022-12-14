@@ -9,6 +9,7 @@
 struct Peer { // This structure is named "myDataType"
   uint32_t nodeId;
   int channel;
+  int missing;
 };
 
 
@@ -54,6 +55,7 @@ class PeersPool  {
           for(int i=0; i<PEER_MAX; i++) {
             peers[i].nodeId = 0;
             peers[i].channel = -1;
+            peers[i].missing = 0;
           }
           _dirty = true;
         }
@@ -71,6 +73,7 @@ class PeersPool  {
             if (peers[i].nodeId == 0) {
               peers[i].nodeId = nodeId;
               peers[i].channel = channel;
+              peers[i].missing = 0;
               _dirty = true;
               return;
             }
@@ -82,6 +85,16 @@ class PeersPool  {
             if (peers[i].nodeId == nodeId) {
               peers[i].nodeId = 0;
               peers[i].channel = -1;
+              _dirty = true;
+              return;
+            }
+          }
+        }
+
+        void missingPeer(uint32_t nodeId) {
+          for(int i=0; i<PEER_MAX; i++) {
+            if (peers[i].nodeId == nodeId) {
+              peers[i].missing = true;
               _dirty = true;
               return;
             }
@@ -114,7 +127,7 @@ class PeersPool  {
                 }
                 node++;
               }
-              if (!found) removePeer(peers[i].nodeId);
+              if (!found) missingPeer(peers[i].nodeId);
             }
           }
 
@@ -124,6 +137,7 @@ class PeersPool  {
             bool found = false;
             for(int i=0; i<PEER_MAX; i++) {
               if (peers[i].nodeId == *node) {
+                peers[i].missing = 0;
                 found = true;
                 break;
               }
@@ -135,7 +149,7 @@ class PeersPool  {
 
         void import(PeersPool* pool) 
         {
-          clear();
+          // clear();
           addPeer(pool->ownerID(), pool->ownerChannel()); // add pool owner as peer
 
           for(int i=0; i<PEER_MAX; i++) {
@@ -150,6 +164,13 @@ class PeersPool  {
         {
           calculate();
           return _size;
+        }
+
+        // Number of other peers with valid channels && not missing
+        int sizeLocal() 
+        {
+          calculate();
+          return _sizeLocal;
         }
 
         // Number of distinct active channels
@@ -174,6 +195,11 @@ class PeersPool  {
           _size = 0;
           for(int i=0; i<PEER_MAX; i++)
             if (peers[i].nodeId != 0 && peers[i].channel > -1) _size++;
+
+          // LOCAL Size
+          _sizeLocal = 0;
+          for(int i=0; i<PEER_MAX; i++)
+            if (peers[i].nodeId != 0 && peers[i].channel > -1 && peers[i].missing == 0) _sizeLocal++;
         
           // Distinct channels
           int channels[32] = {0};
@@ -199,15 +225,27 @@ class PeersPool  {
               if (peers[i].channel < _channel) _peerPosition++;
               else if (peers[i].channel == _channel && peers[i].nodeId < _nodeId) _peerPosition++;
 
+          // Peers LOCAL position
+          _peerLocalPosition = 0;
+          for(int i=0; i<PEER_MAX; i++)
+            if (peers[i].channel >= 0 && peers[i].missing == 0) 
+              if (peers[i].channel < _channel) _peerLocalPosition++;
+              else if (peers[i].channel == _channel && peers[i].nodeId < _nodeId) _peerLocalPosition++;
+
+
           _dirty = false;
         }
 
         bool isSolo() {
-          return size() == 0;
+          return sizeLocal() == 0;
         }
 
         bool isMaster() {
           return !isSolo() && _peerPosition == 0;
+        }
+
+        bool isLocalMaster() {
+          return !isSolo() && _peerLocalPosition == 0;
         }
 
         uint32_t ownerID() {
@@ -223,7 +261,7 @@ class PeersPool  {
           uint32_t mID = 0;
           int mchan = 0;
           for(int i=0; i<PEER_MAX; i++)
-            if (peers[i].channel >= 0) 
+            if (peers[i].channel >= 0 && peers[i].missing == 0) 
               if (mID == 0 || peers[i].channel < mchan || (peers[i].channel == mchan && peers[i].nodeId < mID) ) {
                 mID = peers[i].nodeId;
                 mchan = peers[i].channel;
@@ -251,8 +289,10 @@ class PeersPool  {
         int _channel = -1;
 
         int _size = 0;
+        int _sizeLocal = 0;
         int _chanPosition = 0;
         int _peerPosition = 0;
+        int _peerLocalPosition = 0;
         int _distinctChannels = 0;
 
         bool _dirty = true;

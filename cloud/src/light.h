@@ -94,7 +94,7 @@ void nextMacro(uint32_t now) {
   setActiveMacro(now, (macro+1) % macroCount);
 }
 
-void updateMacro(uint32_t now, int position, int peers, int autoNext=0)
+void updateMacro(uint32_t now, int position, int peers, int autoNext=0, int solo=0)
 {
   uint32_t animNow = now - macroTimeOffset;
 
@@ -114,6 +114,6 @@ void updateMacro(uint32_t now, int position, int peers, int autoNext=0)
 
   K32_anim* anim = activeMacro();
   if (anim) 
-    anim->push(duration, time, round, turn, position, peers );
+    anim->push(duration, time, round, turn, position, peers, solo );
 }
 

@@ -30,6 +30,7 @@ class Anim_cloud_wind : public K32_anim {
       int turn    = data[3];
       int position = data[4];
       int count = data[5];
+      int solo = data[6];
       
       float progress = time*1.0f/duration;
 
@@ -40,7 +41,7 @@ class Anim_cloud_wind : public K32_anim {
       {
         for (int i=0; i<this->size(); i++) {
           byte rand = random(150, 250);
-          CRGBW color = (count > 1) ? CRGBW{0,rand,rand-50} : CRGBW{rand/3,rand,0};
+          CRGBW color = (!solo) ? CRGBW{0,rand,rand-50} : CRGBW{rand/3,rand,0};
           this->pixel(i, color);
         }
         nextTime = time + random(30, 140);
