@@ -31,8 +31,8 @@ Scheduler userScheduler; // to control your personal task
 const uint32_t AUTO_SHUTDOWN = 60*60*7;  // 7h
 
 //// Disable once flashed (EEPROM stored)
-// #define K32_SET_NODEID 15      // board unique id  
-// #define HW_REVISION 0     // 0 = DevC - 1 = Atom - 2 = OLIMEX
+// #define K32_SET_NODEID 0      // board unique id  
+// #define HW_REVISION 1     // 0 = DevC - 1 = Atom - 2 = OLIMEX
 ////
 
 uint32_t lastMeshMillis = 0;
@@ -94,16 +94,9 @@ void sendMacro(int forced = 0)
 {
   // Master situation => send macro
   if (pool->isLocalMaster() || forced) {
-    if (state == MACRO) mesh.sendBroadcast( "M="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
-    else if (state == LOOP) mesh.sendBroadcast( "L="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
-    // else if (state == OFF) mesh.sendBroadcast( "OFF" );
+    if (state == MACRO) mesh.sendBroadcast( "M="+String(activeMacroNumber()) );
+    else if (state == LOOP) mesh.sendBroadcast( "L!" );
   }
-
-  // Btn pressed (forced) => inform Master
-  // else if (forced && pool->masterID() > 0) {
-  //   if (state == MACRO) mesh.sendSingle(pool->masterID(), "M="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
-  //   else if (state == LOOP) mesh.sendSingle(pool->masterID(), "L="+String(activeMacroNumber())+String(",")+String(macroTimeOffset) );
-  // }
   
 }
 
@@ -175,29 +168,17 @@ void receivedCallback( uint32_t from, String &msg )
   else if (msg.startsWith("M=") && state != OFF) 
   {
     Serial.println("Received macro from master");
-    msg = msg.substring(2);
-    int pos = msg.indexOf(",");
-    int macro = msg.substring(0, pos).toInt();
-    String s_offset = msg.substring(pos+1);
-    unsigned long offset = strtoul(s_offset.c_str(), NULL, 10);
+    int macro = msg.substring(2).toInt();
     state = MACRO;
-    setActiveMacro(meshMillis(), macro);
-    macroTimeOffset = offset;
+    setActiveMacro(macro);
     sendMacro();
   }
 
   // Receive macro LOOP from Master
-  else if (msg.startsWith("L=") && state != OFF) 
+  else if (msg.startsWith("L!") && state != OFF) 
   {
-    Serial.println("Received macro LOOP from master");
-    msg = msg.substring(2);
-    int pos = msg.indexOf(",");
-    int macro = msg.substring(0, pos).toInt();
-    String s_offset = msg.substring(pos+1);
-    unsigned long offset = strtoul(s_offset.c_str(), NULL, 10);
+    Serial.println("Received LOOP from master");
     state = LOOP;
-    setActiveMacro(meshMillis(), macro);
-    macroTimeOffset = offset;
     sendMacro();
   }
 
@@ -253,9 +234,19 @@ void startMesh()
 {
    // START MESH
   // mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
-  mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
-  mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, 5555, WIFI_AP_STA, MESH_CHANNEL, 1 );
+  mesh.setDebugMsgTypes( ERROR | STARTUP | MESH_STATUS | CONNECTION | GENERAL | SYNC );  // set before init() so that you can see startup messages
+  // mesh.setDebugMsgTypes( ERROR | STARTUP  );  // set before init() so that you can see startup messages
 
+  if (k32->system->channel() == 0) {
+    mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, 5555, WIFI_AP, MESH_CHANNEL, 1 );
+    LOG("mode: MASTER NODE");
+  }
+  else {
+    mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, 5555, WIFI_AP_STA, MESH_CHANNEL, 1 );
+    LOG("mode: NODE");
+  }
+
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);
   
   // SET MESH
   mesh.onReceive(&receivedCallback);
@@ -310,7 +301,7 @@ void setup()
       activeMacro()->stop();
       light->anim("flash")->push(1, 50, 100)->play()->wait();
       LOG("NEXT");
-      nextMacro( meshMillis() );
+      nextMacro();
       sendMacro(true); 
     }
 
@@ -341,7 +332,6 @@ void setup()
         light->anim("flash")->push(1, 1500, 100)->play()->wait();
         state = LOOP;
         LOG("STATE: LOOP");
-        nextMacro( meshMillis() );
         sendMacro(true);
       } 
 
@@ -398,15 +388,15 @@ void setup()
 
   // CREATE ANIMATIONS
   addMacro(new Anim_cloud_wind,    2000, 1)->master(master);
-  addMacro(new Anim_cloud_crawler, 1000, 5)->master(master);
+  addMacro(new Anim_cloud_crawler, 1500, 5)->master(master);
   addMacro(new Anim_cloud_sparkle, 100,  1)->master(master);
   addMacro(new Anim_cloud_breath,  6000, 1)->master(master);
   addMacro(new Anim_cloud_flash,   150,  5)->master(master);
   addMacro(new Anim_cloud_rainbow, 3000, 2)->master(master);
   addMacro(new Anim_cloud_sparkle, 6000, 1)->master(master);
 
+  setActiveMacro();
 
-  setActiveMacro( meshMillis() );
 
   // Serial.printf("I am, ownerID = %lu %lu\n", pool->ownerID(), mesh.getNodeId());
 
@@ -466,7 +456,6 @@ void loop()
       // mesh.stop();
       // delay(500);
       // startMesh();
-
     }
 
     // AUTO-OFF
@@ -479,8 +468,11 @@ void loop()
     mesh.update();
     uint32_t now = meshMillis();
 
-    // LOGF2("%d %d\n", pool->position(), pool->count());
-    updateMacro(now, pool->position(), pool->count(), state == LOOP, pool->isSolo() );    
+    // IF LOOP MODE / force count/position
+    int count = (state == LOOP) ? 10 : pool->count();
+    int position = (state == LOOP) ? k32->system->channel()-1 : pool->position();
+
+    updateMacro(now, position, count, state == LOOP, pool->isSolo() );    
   }
 
   else if (state == WIFI) 
