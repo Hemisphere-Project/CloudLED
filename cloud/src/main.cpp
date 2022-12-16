@@ -42,9 +42,12 @@ uint32_t switchWifiAt = 0;
 int longPress = 0;
 
 uint32_t notAlone = 0;
+uint32_t syncedAt = 0;
 
 enum State { MACRO, LOOP, WIFI, OFF };
 State state = MACRO;
+
+WiFiMode_t connectMode = WIFI_STA;  // WIFI_AP_STA
 
 
 
@@ -213,6 +216,7 @@ void changedConnectionCallback()
 
 void nodeTimeAdjustedCallback(int32_t offset) {
     Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
+    syncedAt = millis();
 }
 
 void switchToWifi() {
@@ -237,15 +241,8 @@ void startMesh()
   mesh.setDebugMsgTypes( ERROR | STARTUP | MESH_STATUS | CONNECTION | GENERAL | SYNC );  // set before init() so that you can see startup messages
   // mesh.setDebugMsgTypes( ERROR | STARTUP  );  // set before init() so that you can see startup messages
 
-  if (k32->system->channel() == 0) {
-    mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, 5555, WIFI_AP, MESH_CHANNEL, 1 );
-    LOG("mode: MASTER NODE");
-  }
-  else {
-    mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, 5555, WIFI_AP_STA, MESH_CHANNEL, 1 );
-    LOG("mode: NODE");
-  }
-
+  mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, 5555, connectMode, MESH_CHANNEL, 1 );
+  
   WiFi.setTxPower(WIFI_POWER_19_5dBm);
   
   // SET MESH
@@ -275,6 +272,15 @@ void setup()
   #ifdef HW_REVISION
     k32->system->hw(HW_REVISION);
   #endif
+
+  // CHANNEL 0
+  if (k32->system->channel() == 0) {
+    state = LOOP;
+    connectMode = WIFI_AP;
+    LOG("mode: MASTER NODE");
+  }
+  else 
+    LOG("mode: SLAVE NODE");
 
   k32->system->channel(k32->system->id());
   Serial.println("Channel: " + String(k32->system->channel()));
@@ -457,6 +463,13 @@ void loop()
       // delay(500);
       // startMesh();
     }
+
+    // TURNOFF MESH once synced
+    // if (syncedAt > 0 && connectMode == WIFI_STA && k32->system->channel() > 0 && pool->isSolo()) {
+    //   mesh.stop();
+    //   LOG("MESH STOPPED");
+    //   syncedAt = 0;
+    // }
 
     // AUTO-OFF
     if (millis() > AUTO_SHUTDOWN*1000) {
