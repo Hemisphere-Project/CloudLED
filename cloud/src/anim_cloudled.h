@@ -134,7 +134,7 @@ class Anim_cloud_crawler : public K32_anim {
       
       this->clear();
       
-      if (turn == position) 
+      if (turn == position || position == -1) 
       {
 
         int crawlerSize = 10;
@@ -214,7 +214,7 @@ class Anim_cloud_flash : public K32_anim {
       
       this->clear();
       
-      if (turn == position) 
+      if (turn == position || position == -1) 
       {
         if (offset < 70) this->all( CRGBW::LightYellow );
       }

@@ -22,7 +22,7 @@ SimpleList<uint32_t> activesNodes;
 
 Scheduler userScheduler; // to control your personal task
 
-#define CLOUD_VERSION 2
+#define CLOUD_VERSION 3
 
 #define   MESH_CHANNEL    10
 #define   MESH_PREFIX     "CloudLED"
@@ -167,6 +167,10 @@ void receivedCallback( uint32_t from, String &msg )
     }
   }
 
+  else if (k32->system->channel() == 0) {
+    return;
+  }
+
   // Receive macro from Master
   else if (msg.startsWith("M=") && state != OFF) 
   {
@@ -194,14 +198,23 @@ void receivedCallback( uint32_t from, String &msg )
     light->anim("flash")->push(6, 50, 100)->play();
   }
 
+  // OFF
   else if (msg.startsWith("OFF")) 
   {
     state = OFF;
     LOG("STATE: OFF");
   }
 
-  // else 
-  // Serial.printf("Pool position: %d // size: %d\n", pool->position(), pool->size());
+  // Time sync
+  else if (msg.startsWith("T=")) 
+  {
+    uint32_t remoteTime = strtoul(msg.substring(2).c_str(), NULL, 10);
+    int32_t offset = remoteTime - millis();
+    Serial.printf("Time sync: %d\n", remoteTime);
+  }
+
+
+
 }
 
 void changedConnectionCallback() 
@@ -238,13 +251,16 @@ void startMesh()
 {
    // START MESH
   // mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
-  mesh.setDebugMsgTypes( ERROR | STARTUP | MESH_STATUS | CONNECTION | GENERAL | SYNC );  // set before init() so that you can see startup messages
+  mesh.setDebugMsgTypes( ERROR | STARTUP | MESH_STATUS | CONNECTION | GENERAL | SYNC | S_TIME );  // set before init() so that you can see startup messages
   // mesh.setDebugMsgTypes( ERROR | STARTUP  );  // set before init() so that you can see startup messages
 
   mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, 5555, connectMode, MESH_CHANNEL, 1 );
   
   WiFi.setTxPower(WIFI_POWER_19_5dBm);
   
+  mesh.setContainsRoot(true);
+  if (k32->system->channel() == 0) mesh.setRoot(true);
+
   // SET MESH
   mesh.onReceive(&receivedCallback);
   mesh.onChangedConnections(&changedConnectionCallback);
@@ -298,7 +314,7 @@ void setup()
       return;
     }
 
-    if (state == MACRO || state == LOOP) 
+    if (state == MACRO || state == LOOP || k32->system->channel() == 0) 
     {
       if (state != MACRO) {
         state = MACRO;
@@ -319,11 +335,13 @@ void setup()
       // k32->system->reset();
     }
     
+    
   });
 
   k32->on("btn/PUSH-long", [](Orderz *order)
   { 
     longPress += 1;
+    LOG("LONG PRESS " + String(longPress));
 
     if (longPress == 1) 
     {
@@ -347,15 +365,15 @@ void setup()
     else if (longPress == 2) 
     {
       // -> WIFI
-      if (state == OFF) {
+      if (state == OFF || k32->system->channel() == 0 ) {
         if (wifi) {
           light->anim("flash")->push(1, 1000, 100)->play()->wait();
           state = WIFI;
           LOG("STATE: WIFI");
         }
         else {
-          switchWifiAt = 1;
-          mesh.sendBroadcast("WIFI", true);
+          if (k32->system->channel() != 0) switchWifiAt = millis()+5000;
+          mesh.sendBroadcast("WIFI", (k32->system->channel() != 0));
         }
       }
 
@@ -366,7 +384,8 @@ void setup()
 
       // -> OFF
       else {
-        mesh.sendBroadcast("OFF", true);
+        mesh.sendBroadcast("OFF", (k32->system->channel() != 0));
+        state = OFF;
       }
     }
 
@@ -465,10 +484,11 @@ void loop()
     }
 
     // TURNOFF MESH once synced
-    // if (syncedAt > 0 && connectMode == WIFI_STA && k32->system->channel() > 0 && pool->isSolo()) {
+    // if (syncedAt > 0 && connectMode == WIFI_STA && k32->system->channel() > 0 && (millis() - syncedAt) > 10000 ) {
     //   mesh.stop();
     //   LOG("MESH STOPPED");
     //   syncedAt = 0;
+    //   light->anim("flash")->push(3, 50, 100)->play();
     // }
 
     // AUTO-OFF
