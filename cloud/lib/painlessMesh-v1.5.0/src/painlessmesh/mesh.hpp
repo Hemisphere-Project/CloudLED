@@ -523,7 +523,7 @@ class Connection : public painlessmesh::layout::Neighbour,
     });
     mesh->mScheduler->addTask(timeOutTask);
 
-    this->nodeSyncTask.set(TASK_MINUTE, TASK_FOREVER, [self]() {
+    this->nodeSyncTask.set(20 * TASK_SECOND, TASK_FOREVER, [self]() {
       Log(SYNC, "nodeSyncTask(): request with %u\n", self->nodeId);
       router::send<protocol::NodeSyncRequest, Connection>(
           self->request(self->mesh->asNodeTree()), self);

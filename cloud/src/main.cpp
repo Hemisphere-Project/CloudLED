@@ -22,7 +22,7 @@ SimpleList<uint32_t> activesNodes;
 
 Scheduler userScheduler; // to control your personal task
 
-#define CLOUD_VERSION 3
+#define CLOUD_VERSION 4
 
 #define   MESH_CHANNEL    10
 #define   MESH_PREFIX     "CloudLED"
@@ -254,12 +254,12 @@ void startMesh()
   mesh.setDebugMsgTypes( ERROR | STARTUP | MESH_STATUS | CONNECTION | GENERAL | SYNC | S_TIME );  // set before init() so that you can see startup messages
   // mesh.setDebugMsgTypes( ERROR | STARTUP  );  // set before init() so that you can see startup messages
 
-  mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, 5555, connectMode, MESH_CHANNEL, 1 );
+  mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, 5555, connectMode, MESH_CHANNEL, 0 );
   
   WiFi.setTxPower(WIFI_POWER_19_5dBm);
   
-  mesh.setContainsRoot(true);
-  if (k32->system->channel() == 0) mesh.setRoot(true);
+  // mesh.setContainsRoot(true);
+  // if (k32->system->channel() == 0) mesh.setRoot(true);
 
   // SET MESH
   mesh.onReceive(&receivedCallback);
