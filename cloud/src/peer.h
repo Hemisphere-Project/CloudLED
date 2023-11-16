@@ -9,6 +9,7 @@
 struct Peer { 
   int channel;
   uint32_t nodeId;
+  bool missing;
 };
 
 

@@ -21,192 +21,113 @@ PeersPool* pool;
 const uint32_t AUTO_SHUTDOWN = 60*60*7;  // 7h
 
 //// Disable once flashed (EEPROM stored)
-// #define K32_SET_NODEID 0      // board unique id  
+// #define K32_SET_NODEID 1      // board unique id  
 // #define HW_REVISION 1     // 0 = DevC - 1 = Atom - 2 = OLIMEX
 ////
 
-
-
-uint32_t meshMillisOffset = 0;
+uint32_t chipID = 0;
 uint32_t switchWifiAt = 0;   
-
+bool soloMode = true;
 int longPress = 0;
 
-uint32_t notAlone = 0;
-uint32_t syncedAt = 0;
+enum State { MACRO, LOOP=253, WIFI=254, OFF=255 };
+byte state = MACRO;
+byte pushes = 1;
 
-enum State { MACRO, LOOP, WIFI, OFF };
-State state = MACRO;
 
 
 
 
 ////////////////////////////////
-////////   INFO         ////////
+////////   BEACON       ////////
 ////////////////////////////////
 
-// Send Info 
-void sendInfo() 
-{
-  if (state == OFF) {
-    nowBroadcast("S=OFF");
-    return;
-  }
-}
 
 // Send Macro
-void sendMacro(int forced = 0) 
+void sendMode() 
 {
-  // Master situation => send macro
-  if (pool->isLocalMaster() || forced) {
-    if (state == MACRO) nowBroadcast( "M="+String(activeMacroNumber()) );
-    else if (state == LOOP) nowBroadcast( "L!" );
-  }
-  
+  uint8_t lMode = (state >= LOOP) ? state : activeMacroNumber(); // local mode
+
+  char msg[10] = {0};
+  sprintf(msg, "M=%03d,%03d", lMode, pushes);
+  nowBroadcast(String(msg));
 }
 
-void sendMacroAuto() { 
-  sendMacro(); 
+void sendTime() 
+{
+  nowBroadcast( "T="+String(nowMillis()) );
 }
-
-// TODO: Task userLoopTask1( TASK_MILLISECOND * 9100 , TASK_FOREVER, &sendInfo );
-// TODO: Task userLoopTask2( TASK_MILLISECOND * 5000 , TASK_FOREVER, &sendMacroAuto );
-// TODO: Task to send timestamp every 1s
 
 ////////////////////////////////
-////////   MESH         ////////
+////////    WIFI OTA    ////////
 ////////////////////////////////
-
-
-// Needed for painless library
-void receivedCallback( uint32_t from, String &msg ) 
-{
-  if (switchWifiAt > 1) return;  // We are toggling wifi, ignore mesh
-  
-  Serial.printf("-- Received from %u msg=%s\n", from, msg.c_str());
-
-  // Receive channels list from Remote
-  if (msg.startsWith("CL=")) 
-  {
-    // Parse remote pool list
-    PeersPool* remotePool = new PeersPool(msg.substring(3), from);
-
-    // I am missing from the list => inform remote
-    if (remotePool->getChannel(pool->ownerID()) != pool->ownerChannel()) 
-    {
-      LOGF3("%d %d %lu == ", remotePool->getChannel(pool->ownerID()), pool->ownerChannel(), pool->ownerID());
-      Serial.println("Remote list doesnt know me => sending my channel");
-      nowBroadcast( "C="+String(k32->system->channel()) );
-      // TODO : remotePool->addPeer(mesh.getNodeId(), k32->system->channel());
-    }
-
-    // If remote is indeed master, update my pool
-    // if (remotePool->isMaster()) {
-      // Serial.println("Remote is master, update my pool");
-    pool->import(remotePool); 
-    // }
-
-    // If remote has smaller set: inform him
-    if (remotePool->size() < pool->size()) {
-      Serial.println("Remote has smaller set => sending my channel list");
-      // TODO : mesh.sendSingle(from, "CL="+pool->toString());
-    }
-
-    delete(remotePool);
-  }
-
-  // Receive individual channel
-  else if (msg.startsWith("C=")) 
-  {
-    Serial.println("Received channel from remote");
-    int channel = msg.substring(2).toInt();
-    pool->addPeer(from, channel);
-
-    if (channel < k32->system->channel()) {
-      Serial.println("Remote channel is lower => He should know me so he takes the lead");
-      // TODO : mesh.sendSingle(from, "C="+String(k32->system->channel()));
-    }
-  }
-
-  else if (k32->system->channel() == 0) {
-    return;
-  }
-
-  // Receive macro from Master
-  else if (msg.startsWith("M=") && state != OFF) 
-  {
-    Serial.println("Received macro from master");
-    int macro = msg.substring(2).toInt();
-    state = MACRO;
-    setActiveMacro(macro);
-    sendMacro();
-  }
-
-  // Receive macro LOOP from Master
-  else if (msg.startsWith("L!") && state != OFF) 
-  {
-    Serial.println("Received LOOP from master");
-    state = LOOP;
-    sendMacro();
-  }
-
-  // Go into WIFI
-  else if (msg.startsWith("WIFI")) 
-  {
-    Serial.println("Received WIFI");
-    switchWifiAt = millis()+5000;
-    activeMacro()->stop();
-    light->anim("flash")->push(6, 50, 100)->play();
-  }
-
-  // OFF
-  else if (msg.startsWith("OFF")) 
-  {
-    state = OFF;
-    LOG("STATE: OFF");
-  }
-
-  // Time sync
-  else if (msg.startsWith("T=")) 
-  {
-    uint32_t remoteTime = strtoul(msg.substring(2).c_str(), NULL, 10);
-    int32_t offset = remoteTime - millis();
-    Serial.printf("Time sync: %d\n", remoteTime);
-  }
-
-
-
-}
-
-void changedConnectionCallback() 
-{
-  // TODO : pool->ownerID(mesh.getNodeId());
-  // Serial.printf("I am, ownerID = %lu %lu\n", pool->ownerID(), mesh.getNodeId());
-  // TODO : Serial.printf("Changed connections, node count = %d \n", mesh.getNodeList().size());
-  // TODO : pool->updatePeers(mesh.getNodeList());
-  sendInfo();
-  sendMacro();
-}
-
-void nodeTimeAdjustedCallback(int32_t offset) {
-    // TODO : Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
-    syncedAt = millis();
-}
 
 void switchToWifi() {
   light->anim("flash")->push(1, 1000, 100)->play()->wait();
   
   state = WIFI;
+  pushes++;
   LOG("STATE: WIFI");
+  sendMode();
+  sendMode();
+  delay(10);
 
-  // stop MESH
-  // TODO : mesh.stop();
+  nowStop();
 
   // start WIFI
+  Serial.println("Starting WIFI");
   wifi = new K32_wifi(k32);
   wifi->setHostname("cloud-"+String(k32->system->id())+"-v"+String(CLOUD_VERSION));
   wifi->connect("hmsphr", "hemiproject");
 }
+
+////////////////////////////////
+////////    RECV        ////////
+////////////////////////////////
+
+
+// Needed for painless library
+void receivedCallback( const uint8_t *mac, const uint8_t *data, int len ) 
+{
+  if (state == WIFI) return;  // We are toggling wifi, ignore mesh
+
+  // Parse
+  uint32_t from = mac[5] | mac[4] << 8 | mac[3] << 16 | mac[2] << 24;
+  String msg = String((char*)data).substring(0, len);
+
+  // Serial.printf("-- Received from %u msg: %s\n", from, msg.c_str());
+
+  // Time sync
+  if (msg.startsWith("T=")) 
+  {
+    uint32_t remoteTime = strtoull(msg.substring(2).c_str(), NULL, 10);
+    nowAdjust(remoteTime);
+  }
+
+  // Mode sync
+  if (msg.startsWith("M=")) 
+  {
+    uint8_t rMode = msg.substring(2,5).toInt(); //msg.substring(2,3);
+    uint8_t lMode = (state >= LOOP) ? state : activeMacroNumber();
+    uint8_t rState = (rMode >= LOOP) ? rMode : MACRO;
+    uint8_t rPushes = msg.substring(6,9).toInt();
+
+    // Serial.printf("Mode rcv: %d - %d\n", rMode, rPushes);
+
+    if (rPushes > pushes || (rPushes == pushes && rMode > lMode)) {
+      pushes = rPushes;
+      if (rState != WIFI) state = rState;
+      
+      if (rState == MACRO) setActiveMacro(rMode);
+      else if (rState == WIFI) switchWifiAt = millis()+100;
+
+      Serial.printf("Mode sync: %d - %d\n", rMode, pushes);
+    }
+  }
+}
+
+
+
 
 
 ////////////////////////////////
@@ -215,6 +136,11 @@ void switchToWifi() {
 
 void setup() 
 {
+  // chipID
+  for(int i=0; i<17; i=i+8)
+    chipID |= ((ESP.getEfuseMac() >> (40 - i)) & 0xff) << i;
+  
+
   pinMode(23, INPUT);
   digitalWrite(23, HIGH);
 
@@ -249,7 +175,7 @@ void setup()
     }
 
     // MACRO/LOOP -> MACRO
-    if (state == MACRO || state == LOOP || k32->system->channel() == 0) 
+    if (state == MACRO || state == LOOP) 
     {
       if (state != MACRO) {
         state = MACRO;
@@ -259,15 +185,17 @@ void setup()
       light->anim("flash")->push(1, 50, 100)->play()->wait();
       LOG("NEXT");
       nextMacro();
-      sendMacro(true); 
+      pushes++;
+      sendMode();
     }
 
-    // WIFI -> OFF again
+    // WIFI -> RESET
     else if (state == WIFI) {
-      state = OFF;
-      LOG("STATE: OFF");
-      light->anim("off")->push(1)->play();
-      // k32->system->reset();
+      // state = OFF;
+      // pushes++;
+      // LOG("STATE: OFF");
+      // light->anim("off")->push(1)->play();
+      k32->system->reset();
     }
     
   });
@@ -291,8 +219,9 @@ void setup()
         activeMacro()->stop();
         light->anim("flash")->push(1, 1500, 100)->play()->wait();
         state = LOOP;
+        pushes++;
         LOG("STATE: LOOP");
-        sendMacro(true);
+        sendMode();
       } 
 
     }
@@ -302,15 +231,8 @@ void setup()
     {
       // OFF -> WIFI
       if (state == OFF || k32->system->channel() == 0 ) {
-        if (wifi) {
-          light->anim("flash")->push(1, 1000, 100)->play()->wait();
-          state = WIFI;
-          LOG("STATE: WIFI");
-        }
-        else {
-          if (k32->system->channel() != 0) switchWifiAt = millis()+5000;
-          // TODO : mesh.sendBroadcast("WIFI", (k32->system->channel() != 0));
-        }
+        switchWifiAt = millis()+100;
+        light->anim("flash")->push(1, 50, 100)->play()->wait();
       }
 
       // WIFI -> RESTART 
@@ -320,8 +242,10 @@ void setup()
 
       // MACRO/LOOP -> OFF
       else {
-        // TODO : mesh.sendBroadcast("OFF", (k32->system->channel() != 0));
         state = OFF;
+        pushes++;
+        LOG("STATE: OFF");
+        sendMode();
       }
     }
 
@@ -333,12 +257,7 @@ void setup()
   else if (k32->system->hw() == 2) lightSetup(k32, 25, LED_WS2812B_V3, 5);        // OLIMEX
   
   // POOL
-  // TODO : pool = new PeersPool(mesh.getNodeId(), k32->system->channel());
-
-  // TODO : userScheduler.addTask( userLoopTask1 );
-  // TODO : userScheduler.addTask( userLoopTask2 );
-  // TODO : userLoopTask1.enable();
-  // TODO : userLoopTask2.enable();
+  // pool = new PeersPool( chipID, k32->system->channel() );
 
   int master = 255;
   if(k32->system->hw() == 1) master = 50;
@@ -355,8 +274,7 @@ void setup()
 
   setActiveMacro();
 
-
-  // Serial.printf("I am, ownerID = %lu %lu\n", pool->ownerID(), mesh.getNodeId());
+  // Serial.printf("I am, ownerID = %lu %lu\n", pool->ownerID(), chipID);
 
   // Heap Memory log
   // k32->timer->every(1000, []() {
@@ -367,9 +285,15 @@ void setup()
   //   if (heap < 50000) LOGF2("WARNING: free memory < 50K, new task might not properly start. %d / %d\n", heap, heap - lastheap);
   // });
 
-  // Refresh missing nodes
-  k32->timer->every(5000, []() {
-    // TODO : pool->updatePeers(mesh.getNodeList());
+  // nowINIT
+  nowInit(receivedCallback);
+
+  // send MODE
+  k32->timer->every(1000, []() {
+    sendMode();
+    delay( random(10) );  // random delay to avoid collision
+    sendTime();
+    delay( random(10) );  // random delay to avoid collision
   });
 
   
@@ -389,37 +313,35 @@ void loop()
       switchWifiAt = 0;
       switchToWifi();
     }
-    // TODO : else mesh.update();
     return;
   }
 
-  // INFO
-  if (macroChanged) {
-    sendMacro();
-    macroChanged = false;
-  }
+  // // INFO
+  // if (macroChanged) {
+  //   sendMode();
+  //   macroChanged = false;
+  // }
 
   // ANIMATE
-  if (state == MACRO || state == LOOP)  
+  if (state == LOOP || state == MACRO)  
   {
-    // Alone after being linked => reset
-    if (notAlone != 1 && !pool->isSolo()) notAlone = 1;                // Not Alone
-    else if (pool->isSolo() && notAlone == 1) notAlone = millis();     // Became ISolated
-    else if (notAlone > 1 && millis()-notAlone > 60000)                // Isolatd for 60s   //k32->system->reset();
-    {
-      notAlone = 0;
-      LOG("MESH RESTART: isolated");
-    }
-
+    // // Alone after being linked => reset
+    // if (notAlone != 1 && !pool->isSolo()) notAlone = 1;                // Not Alone
+    // else if (pool->isSolo() && notAlone == 1) notAlone = millis();     // Became ISolated
+    // else if (notAlone > 1 && millis()-notAlone > 60000)                // Isolatd for 60s   //k32->system->reset();
+    // {
+    //   notAlone = 0;
+    //   LOG("MESH RESTART: isolated");
+    // }
 
     // AUTO-OFF
-    if (millis() > AUTO_SHUTDOWN*1000) {
+    if (nowMillis() > AUTO_SHUTDOWN*1000) {
       state = OFF;
-      // TODO : mesh.sendBroadcast("OFF", true);
+      pushes++;
+      sendMode();
     }
     
     // Update
-    // TODO : mesh.update();
     uint32_t now = nowMillis();
 
     // IF LOOP MODE / force count/position
@@ -428,14 +350,12 @@ void loop()
     int count = 10;
     int position = k32->system->channel()-1;
 
-    updateMacro(now, position, count, state == LOOP, pool->isSolo() );    
+    updateMacro(now, position, count, state == LOOP, soloMode );    
   }
 
   else if (state == WIFI) 
   {
-    uint32_t now = nowMillis();
-
-    byte val = (now/12)%100 + 0;
+    byte val = (nowMillis()/12)%100 + 0;
     CRGBW color = CRGBW::DarkBlue;
 
     if (wifi && wifi->otaInProgress()) 
@@ -453,7 +373,6 @@ void loop()
   
   else if (state == OFF)
   {
-    // TODO : mesh.update();
     activeMacro()->stop();
     light->anim("off")->push(1)->play();
   }
