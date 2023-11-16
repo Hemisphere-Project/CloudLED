@@ -15,7 +15,6 @@ int macroChanged = false;
 
 void lightSetup(K32* k32, int stripSize, int stripType, int stripPin) {
   light = new K32_light(k32);
-  light->loadprefs();
   
   stripSIZE = stripSize;
   strip = new K32_ledstrip(0, stripPin, stripType, stripSIZE);    

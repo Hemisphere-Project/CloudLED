@@ -6,10 +6,9 @@
 
 #define PEER_MAX 16
 
-struct Peer { // This structure is named "myDataType"
-  uint32_t nodeId;
+struct Peer { 
   int channel;
-  int missing;
+  uint32_t nodeId;
 };
 
 
@@ -53,9 +52,7 @@ class PeersPool  {
         void clear() 
         {
           for(int i=0; i<PEER_MAX; i++) {
-            peers[i].nodeId = 0;
             peers[i].channel = -1;
-            peers[i].missing = 0;
           }
           _dirty = true;
         }
