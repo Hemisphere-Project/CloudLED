@@ -31,7 +31,7 @@ bool soloMode = true;
 int longPress = 0;
 
 enum State { MACRO, LOOP=253, WIFI=254, OFF=255 };
-byte state = MACRO;
+byte state = LOOP;
 byte pushes = 1;
 
 
